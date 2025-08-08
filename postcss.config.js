@@ -1,4 +1,4 @@
-// postcss.config.js (Correct)
+// Correct version for postcss.config.js
 import tailwindcss from '@tailwindcss/postcss';
 import autoprefixer from 'autoprefixer';
 
