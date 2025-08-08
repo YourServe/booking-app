@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -70,7 +70,8 @@ export default function App() {
     const [addOns, setAddOns] = useState([]);
     const [resourceLinks, setResourceLinks] = useState([]);
     const [areas, setAreas] = useState([]);
-    const [scheduleOverrides, setScheduleOverrides] = useState([]); // New state for overrides
+    const [scheduleOverrides, setScheduleOverrides] = useState([]);
+    const [closures, setClosures] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -121,7 +122,7 @@ export default function App() {
         if (!isAuthReady || !db) return;
 
         setLoading(true);
-        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides'];
+        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures'];
         let loadedCount = 0;
 
         const unsubscribers = collections.map(collectionName => {
@@ -151,6 +152,13 @@ export default function App() {
                             date: o.date instanceof Timestamp ? o.date.toDate() : new Date(o.date)
                         }));
                         setScheduleOverrides(parsedOverrides);
+                        break;
+                    case 'closures':
+                        const parsedClosures = data.map(c => ({
+                            ...c,
+                            date: c.date instanceof Timestamp ? c.date.toDate() : new Date(c.date)
+                        }));
+                        setClosures(parsedClosures);
                         break;
                     default: break;
                 }
@@ -202,23 +210,27 @@ export default function App() {
             return newDate;
         });
     };
+    
+    const shortDate = selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const longDate = selectedDate.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
 
     return (
         <div className="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col">
-            <header className="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 p-3 flex justify-between items-center sticky top-0 z-50">
+            <header className="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 p-2 sm:p-3 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
                         <Calendar size={18} className="text-white"/>
                     </div>
-                    <h1 className="text-xl font-bold text-white">Venue Booking</h1>
+                    <h1 className="hidden sm:block text-xl font-bold text-white">Venue Booking</h1>
                 </div>
 
                 {view === 'timeline' && (
-                    <div className="flex-grow flex justify-center items-center relative">
-                        <div className="flex items-center gap-2">
+                    <div className="flex-grow flex justify-center items-center relative mx-2">
+                        <div className="flex items-center gap-1 sm:gap-2">
                             <button onClick={() => handleDateChange(-1)} className="p-2 rounded-md hover:bg-gray-700"><ChevronLeft size={20}/></button>
-                            <button onClick={() => setShowCalendar(c => !c)} className="text-lg font-semibold hover:bg-gray-700 px-3 py-1 rounded-md">
-                                {selectedDate.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                            <button onClick={() => setShowCalendar(c => !c)} className="text-base sm:text-lg font-semibold hover:bg-gray-700 px-2 sm:px-3 py-1 rounded-md text-center">
+                                <span className="sm:hidden">{shortDate}</span>
+                                <span className="hidden sm:inline">{longDate}</span>
                             </button>
                             <button onClick={() => handleDateChange(1)} className="p-2 rounded-md hover:bg-gray-700"><ChevronRight size={20}/></button>
                             {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
@@ -226,17 +238,17 @@ export default function App() {
                     </div>
                 )}
 
-                <nav className="flex items-center gap-4">
+                <nav className="flex items-center gap-2 sm:gap-4">
                      {view === 'timeline' && (
                         <>
-                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold">
+                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg items-center gap-1.5 text-sm font-semibold hidden sm:flex">
                                 Today
                             </button>
                             <button
                                 onClick={() => handleOpenBookingModal(null, selectedDate)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
+                                className="bg-blue-600 hover:bg-blue-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
                             >
-                                <Plus size={16} /> New
+                                <Plus size={16} /> <span className="hidden sm:inline">New</span>
                             </button>
                         </>
                     )}
@@ -276,6 +288,7 @@ export default function App() {
                                 resourceLinks={resourceLinks}
                                 areas={areas}
                                 scheduleOverrides={scheduleOverrides}
+                                closures={closures}
                                 onNewBooking={handleOpenBookingModal}
                                 selectedDate={selectedDate}
                             />
@@ -289,6 +302,7 @@ export default function App() {
                                 addOns={addOns}
                                 resourceLinks={resourceLinks}
                                 areas={areas}
+                                closures={closures}
                             />
                         )}
                     </>
@@ -311,6 +325,7 @@ export default function App() {
                     bookings={bookings}
                     selectedDate={selectedDate}
                     areas={areas}
+                    closures={closures}
                 />
             )}
         </div>
@@ -488,11 +503,15 @@ function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking,
 }
 
 // --- Timeline View Component (Updated) ---
-function TimelineView({ db, appId, activities, resources, bookings, addOns, resourceLinks, areas, scheduleOverrides, onNewBooking, selectedDate }) {
+function TimelineView({ db, appId, activities, resources, bookings, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, selectedDate }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
     const [nowLinePos, setNowLinePos] = useState(null);
+
+    const isClosed = useMemo(() => {
+        return closures.some(c => c.date.toDateString() === selectedDate.toDateString());
+    }, [closures, selectedDate]);
 
     useEffect(() => {
         const calculateNowLine = () => {
@@ -748,16 +767,16 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
 
     return (
         <div className="flex-grow h-[calc(100vh-113px)] flex overflow-hidden">
-            <div className="w-[140px] flex-shrink-0 z-20 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <div className="w-[110px] sm:w-[140px] flex-shrink-0 z-20 bg-gray-800 border-r border-gray-700 flex flex-col">
                 <div className={`flex-shrink-0 border-b border-gray-700 ${headerHeight}`}></div>
                 <div ref={leftColumnRef} className="overflow-y-hidden">
                     {groupedResources.map(activity => (
                         <div key={activity.id}>
-                            <div className="h-8 flex items-center px-4 bg-gray-700 border-b border-t border-gray-600">
-                                <h3 className="text-sm font-bold text-blue-400">{activity.name}</h3>
+                            <div className="h-8 flex items-center px-2 sm:px-4 bg-gray-700 border-b border-t border-gray-600">
+                                <h3 className="text-sm font-bold text-blue-400 truncate">{activity.name}</h3>
                             </div>
                             {activity.resources.map(resource => (
-                                <div key={resource.id} className={`flex items-center px-4 border-b border-gray-700 ${rowHeightClass}`}>
+                                <div key={resource.id} className={`flex items-center px-2 sm:px-4 border-b border-gray-700 ${rowHeightClass}`}>
                                     <span className="text-gray-300 truncate">{resource.abbreviation || resource.name}</span>
                                 </div>
                             ))}
@@ -775,7 +794,17 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
                         ))}
                     </div>
 
-                    {groupedResources.map(activity => (
+                    {isClosed && (
+                        <div className="absolute inset-0 bg-red-900/30 z-20 flex items-center justify-center pointer-events-none">
+                            <div className="text-center p-4 bg-gray-900/80 rounded-lg border border-red-500/50">
+                                <Ban className="mx-auto text-red-400 mb-2" size={32} />
+                                <h2 className="text-xl font-bold text-white">Venue Closed</h2>
+                                <p className="text-gray-400">This day has been marked as closed.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {!isClosed && groupedResources.map(activity => (
                         <div key={activity.id}>
                             <div className="h-8 border-b border-gray-600"></div>
                             {activity.resources.map(resource => (
@@ -863,7 +892,7 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
 
 
 // --- Settings View Component ---
-function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas }) {
+function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures }) {
     const [currentTab, setCurrentTab] = useState('activities');
 
     return (
@@ -872,7 +901,7 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                 <h1 className="text-3xl font-bold text-white">Settings</h1>
                 <p className="text-gray-400 mt-1">Manage activities and resources for your venue.</p>
             </div>
-            <div className="flex border-b border-gray-700 mb-6">
+            <div className="flex border-b border-gray-700 mb-6 flex-wrap">
                 <button onClick={() => setCurrentTab('activities')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'activities' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
                     Activities
                 </button>
@@ -888,6 +917,9 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                 <button onClick={() => setCurrentTab('schedule')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'schedule' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
                     Schedule
                 </button>
+                 <button onClick={() => setCurrentTab('closures')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'closures' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
+                    Closures
+                </button>
             </div>
             <div>
                 {currentTab === 'activities' && <ActivityManager db={db} appId={appId} activities={activities} areas={areas} />}
@@ -895,6 +927,7 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                 {currentTab === 'addOns' && <AddOnManager db={db} appId={appId} addOns={addOns} />}
                 {currentTab === 'linking' && <ResourceLinkManager db={db} appId={appId} resources={resources} activities={activities} resourceLinks={resourceLinks} />}
                 {currentTab === 'schedule' && <AreaManager db={db} appId={appId} areas={areas} />}
+                {currentTab === 'closures' && <ClosureManager db={db} appId={appId} closures={closures} />}
             </div>
         </div>
     );
@@ -1450,7 +1483,7 @@ function AreaManager({ db, appId, areas }) {
 
 
 // --- Booking Modal Component (Updated with Clash Prevention) ---
-function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas }) {
+function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas, closures }) {
     const [customerName, setCustomerName] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ phone: '', email: '' });
     const [groupSize, setGroupSize] = useState(2);
@@ -1620,6 +1653,12 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             const itemStart = itemToSave.startTime;
             const itemEnd = new Date(itemStart.getTime() + itemToSave.duration * 60 * 1000);
             
+            const isDayClosed = closures.some(c => c.date.toDateString() === itemStart.toDateString());
+            if (isDayClosed) {
+                setModalError(`Cannot create booking: The venue is closed on ${itemStart.toLocaleDateString()}.`);
+                return;
+            }
+
             const activity = activities.find(a => a.id === itemToSave.activityId);
             const area = areas.find(a => a.id === activity?.areaId);
             if (!area) {
