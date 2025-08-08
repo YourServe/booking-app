@@ -1399,6 +1399,32 @@ function AreaManager({ db, appId, areas }) {
         setEditingId(null);
     };
 
+    const TimeInput = ({ value, onChange }) => {
+        const inputRef = useRef(null);
+        const handleClick = () => {
+            if (inputRef.current) {
+                try {
+                    inputRef.current.showPicker();
+                } catch (e) {
+                    // For browsers that don't support showPicker()
+                    console.log("showPicker() is not supported by this browser.");
+                }
+            }
+        };
+        return (
+            <div className="relative w-full" onClick={handleClick}>
+                <input
+                    ref={inputRef}
+                    type="time"
+                    value={value}
+                    onChange={onChange}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none text-center"
+                    required
+                />
+            </div>
+        );
+    };
+
     return (
         <div className="grid md:grid-cols-2 gap-8">
             <div>
@@ -1418,11 +1444,19 @@ function AreaManager({ db, appId, areas }) {
                                             <label className="text-xs font-semibold text-gray-400">Staff Availability</label>
                                             <div className="space-y-2 mt-1">
                                                 {staffBlocks.map((block, index) => (
-                                                    <div key={block.id || index} className="grid grid-cols-4 gap-2 items-center">
-                                                        <InputField type="time" value={block.start} onChange={(e) => handleBlockChange(day, block.id, 'start', e.target.value)} required={true}/>
-                                                        <InputField type="time" value={block.end} onChange={(e) => handleBlockChange(day, block.id, 'end', e.target.value)} required={true}/>
-                                                        <InputField type="number" value={block.count} onChange={(e) => handleBlockChange(day, block.id, 'count', Number(e.target.value))} required={true} placeholder="Staff"/>
-                                                        <button type="button" onClick={() => removeBlock(day, block.id)} className="p-2 text-red-400 hover:bg-gray-700 rounded-md self-end mb-1"><Trash2 size={16}/></button>
+                                                    <div key={block.id || index} className="grid grid-cols-12 gap-2 items-end">
+                                                        <div className="col-span-5"><TimeInput value={block.start} onChange={(e) => handleBlockChange(day, block.id, 'start', e.target.value)} /></div>
+                                                        <div className="col-span-5"><TimeInput value={block.end} onChange={(e) => handleBlockChange(day, block.id, 'end', e.target.value)} /></div>
+                                                        <div className="col-span-1">
+                                                            <select
+                                                                value={block.count}
+                                                                onChange={(e) => handleBlockChange(day, block.id, 'count', Number(e.target.value))}
+                                                                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                            >
+                                                                {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <button type="button" onClick={() => removeBlock(day, block.id)} className="col-span-1 justify-self-center p-2 text-red-400 hover:bg-gray-700 rounded-md mb-1"><Trash2 size={16}/></button>
                                                     </div>
                                                 ))}
                                                 <button type="button" onClick={() => addBlock(day)} className="text-xs text-blue-400 hover:underline">+ Add Staff Block</button>
@@ -2251,9 +2285,9 @@ function PriceBreakdown({ bookingItems, selectedAddOns, groupSize, activities, a
 }
 
 // --- Reusable Input Field Component ---
-function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength }) {
+function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength, className = '' }) {
     return (
-        <div>
+        <div className={className}>
             {label && <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>}
             <div className="relative">
                 {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />}
