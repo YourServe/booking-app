@@ -5,9 +5,10 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle } from 'lucide-react';
 
 // --- Firebase Configuration ---
+// This configuration is provided and should be used to initialize Firebase.
 const firebaseConfig = {
     apiKey: "AIzaSyA3NJOCZe2zFw6Ueu5gBt9o2UgFgvU8eI0",
     authDomain: "serve-social-booking.firebaseapp.com",
@@ -69,6 +70,7 @@ export default function App() {
     const [addOns, setAddOns] = useState([]);
     const [resourceLinks, setResourceLinks] = useState([]);
     const [areas, setAreas] = useState([]);
+    const [scheduleOverrides, setScheduleOverrides] = useState([]); // New state for overrides
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -119,7 +121,7 @@ export default function App() {
         if (!isAuthReady || !db) return;
 
         setLoading(true);
-        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas'];
+        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides'];
         let loadedCount = 0;
 
         const unsubscribers = collections.map(collectionName => {
@@ -143,6 +145,13 @@ export default function App() {
                     case 'addOns': setAddOns(data.sort((a, b) => a.name.localeCompare(b.name))); break;
                     case 'resourceLinks': setResourceLinks(data); break;
                     case 'areas': setAreas(data.sort((a, b) => a.name.localeCompare(b.name))); break;
+                    case 'scheduleOverrides': 
+                        const parsedOverrides = data.map(o => ({
+                            ...o,
+                            date: o.date instanceof Timestamp ? o.date.toDate() : new Date(o.date)
+                        }));
+                        setScheduleOverrides(parsedOverrides);
+                        break;
                     default: break;
                 }
                 loadedCount++;
@@ -196,7 +205,7 @@ export default function App() {
 
     return (
         <div className="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col">
-            <header className="bg-gray-900/80 backdrop-blur-md border-b border-gray-700 p-3 flex justify-between items-center sticky top-0 z-50">
+            <header className="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 p-3 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                         <Calendar size={18} className="text-white"/>
@@ -258,12 +267,15 @@ export default function App() {
                     <>
                         {view === 'timeline' && (
                             <TimelineView
+                                db={db}
+                                appId={appId}
                                 activities={activities}
                                 resources={resources}
                                 bookings={bookings}
                                 addOns={addOns}
                                 resourceLinks={resourceLinks}
                                 areas={areas}
+                                scheduleOverrides={scheduleOverrides}
                                 onNewBooking={handleOpenBookingModal}
                                 selectedDate={selectedDate}
                             />
@@ -298,25 +310,113 @@ export default function App() {
                     resourceLinks={resourceLinks}
                     bookings={bookings}
                     selectedDate={selectedDate}
+                    areas={areas}
                 />
             )}
         </div>
     );
 }
 
-// --- Fixed Time Slot Component (New) ---
-function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking, getBookingItemPosition, filteredBookings, unavailableSlots }) {
-    const slots = useMemo(() => {
-        const area = areas.find(a => a.id === activity.areaId);
-        if (!area) return [];
+// --- Editable Slot Component (Updated) ---
+function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBookingItemPosition, availableTimeOptions }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [newTime, setNewTime] = useState(slot.startTime.toTimeString().substring(0, 5));
+    const popoverRef = useRef(null);
 
+    const { left, width } = getBookingItemPosition(slot);
+
+    const handleSave = (e) => {
+        e.stopPropagation();
+        onUpdateTimeSlot(resource.id, slot.startTime, newTime);
+        setIsEditing(false);
+    };
+
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+                setIsEditing(false);
+            }
+        }
+        if (isEditing) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isEditing, popoverRef]);
+
+    return (
+        <div
+            className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border-2 border-dashed border-gray-600 hover:border-blue-400 group"
+            style={{ left, width }}
+            onClick={() => onNewBooking(null, slot.startTime, resource.id)}
+        >
+            <div className="text-center">
+                <p className="text-xs font-semibold text-gray-300">Available</p>
+                <p className="text-xs text-gray-500">{slot.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+            </div>
+            <button
+                className="absolute top-1 right-1 p-1 rounded-full bg-gray-800/50 opacity-0 group-hover:opacity-100 hover:bg-gray-700"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditing(true);
+                }}
+            >
+                <Settings size={12} />
+            </button>
+
+            {isEditing && (
+                <div
+                    ref={popoverRef}
+                    className="absolute top-0 left-0 w-full h-full bg-gray-800 z-10 rounded-md flex flex-col items-center justify-center p-2 gap-2 shadow-lg border border-gray-600"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <select
+                        value={newTime}
+                        onChange={(e) => setNewTime(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-600 rounded-lg p-1 text-xs text-white"
+                    >
+                        {availableTimeOptions.map(time => (
+                            <option key={time} value={time}>{time}</option>
+                        ))}
+                    </select>
+                    <button
+                        onClick={handleSave}
+                        className="w-full text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded-md text-white font-semibold"
+                    >
+                        Save
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+// --- Fixed Time Slot Component (Updated) ---
+function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking, getBookingItemPosition, filteredBookings, unavailableSlots, onUpdateTimeSlot, scheduleOverrides }) {
+    const slots = useMemo(() => {
         const dayOfWeek = DAYS_OF_WEEK[selectedDate.getDay()];
-        const daySchedule = area.schedule?.find(s => s.day === dayOfWeek);
-        if (!daySchedule || !daySchedule.isOpen || !daySchedule.fixedTimeSlots) {
-            return [];
+        const override = scheduleOverrides.find(o => 
+            o.resourceId === resource.id &&
+            o.date.toDateString() === selectedDate.toDateString()
+        );
+
+        let fixedTimeSlotsForDay;
+
+        if (override) {
+            fixedTimeSlotsForDay = override.fixedTimeSlots;
+        } else {
+            const area = areas.find(a => a.id === activity.areaId);
+            if (!area) return [];
+            const daySchedule = area.schedule?.find(s => s.day === dayOfWeek);
+            if (!daySchedule || !daySchedule.isOpen) return [];
+            fixedTimeSlotsForDay = daySchedule.fixedTimeSlots;
         }
 
-        return daySchedule.fixedTimeSlots.map(time => {
+        if (!fixedTimeSlotsForDay) return [];
+
+        return fixedTimeSlotsForDay.map(time => {
             const [hour, minute] = time.split(':').map(Number);
             const startTime = new Date(selectedDate);
             startTime.setHours(hour, minute, 0, 0);
@@ -324,7 +424,6 @@ function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking,
             const duration = 60; 
             const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
 
-            // Check for conflicts
             const isBooked = filteredBookings.some(b => 
                 b.items.some(item => {
                     const itemEnd = new Date(item.startTime.getTime() + item.duration * 60 * 1000);
@@ -342,46 +441,54 @@ function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking,
             }
 
             return { startTime, duration };
-        }).filter(Boolean); // remove nulls
+        }).filter(Boolean);
 
-    }, [resource.id, activity.areaId, areas, selectedDate, filteredBookings, unavailableSlots]);
+    }, [resource.id, activity.areaId, areas, selectedDate, filteredBookings, unavailableSlots, scheduleOverrides]);
+    
+    const availableTimeOptions = useMemo(() => {
+        const options = new Set();
+        timeSlots.slice(0, -1).forEach(time => {
+            const [hour, minute] = time.split(':').map(Number);
+            const checkTime = new Date(selectedDate);
+            checkTime.setHours(hour, minute, 0, 0);
+            const checkTimeEnd = new Date(checkTime.getTime() + 60 * 60 * 1000);
+
+            const isBooked = filteredBookings.some(b => 
+                b.items.some(item => {
+                    const itemEnd = new Date(item.startTime.getTime() + item.duration * 60 * 1000);
+                    return item.resourceIds.includes(resource.id) && item.startTime < checkTimeEnd && itemEnd > checkTime;
+                })
+            );
+
+            if (!isBooked) {
+                options.add(time);
+            }
+        });
+        return Array.from(options);
+    }, [filteredBookings, selectedDate, resource.id]);
 
     return (
         <>
-            {/* Render the background grid lines first */}
             {timeSlots.slice(0, -1).map((time, i) => (
-                <div
-                    key={i}
-                    className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'}`}
-                ></div>
+                <div key={i} className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'}`}></div>
             ))}
-
-            {/* Overlay the available slots */}
-            {slots.map((slot, index) => {
-                const { left, width } = getBookingItemPosition(slot);
-                return (
-                    <div
-                        key={index}
-                        className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border-2 border-dashed border-gray-600 hover:border-blue-400"
-                        style={{ left, width }}
-                        onClick={() => onNewBooking(null, slot.startTime, resource.id)}
-                    >
-                        <div className="text-center">
-                            <p className="text-xs font-semibold text-gray-300">Available</p>
-                            <p className="text-xs text-gray-500">{slot.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                        </div>
-                    </div>
-                );
-            })}
+            {slots.map((slot, index) => (
+                <EditableSlot 
+                    key={index}
+                    slot={slot}
+                    resource={resource}
+                    onNewBooking={onNewBooking}
+                    onUpdateTimeSlot={onUpdateTimeSlot}
+                    getBookingItemPosition={getBookingItemPosition}
+                    availableTimeOptions={availableTimeOptions}
+                />
+            ))}
         </>
     );
 }
 
-// --- Timeline View Component ---
-function TimelineView({ activities, resources, bookings, addOns, resourceLinks, areas, onNewBooking, selectedDate }) {
-    const db = getFirestore();
-    const appId = 'default-app-id'; // Use consistent ID
-    
+// --- Timeline View Component (Updated) ---
+function TimelineView({ db, appId, activities, resources, bookings, addOns, resourceLinks, areas, scheduleOverrides, onNewBooking, selectedDate }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
@@ -401,7 +508,7 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
         };
 
         calculateNowLine();
-        const timer = setInterval(calculateNowLine, 60000); // Update every minute
+        const timer = setInterval(calculateNowLine, 60000);
         return () => clearInterval(timer);
     }, [selectedDate]);
 
@@ -433,7 +540,7 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
         const totalStartMinutes = (startHour - 8) * 60 + startMinute;
         
         const left = `calc(${(totalStartMinutes / 15)} * 4rem)`;
-        const width = `calc(${(item.duration / 15)} * 4rem - 2px)`; // Subtract 2px for gap
+        const width = `calc(${(item.duration / 15)} * 4rem - 2px)`;
 
         return { left, width };
     };
@@ -450,9 +557,74 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
             console.error("Error updating status:", error);
         }
     };
+
+    const handleUpdateTimeSlot = async (resourceId, oldStartTime, newTimeValue) => {
+        if (!db) return;
+        
+        const normalizedDate = new Date(selectedDate);
+        normalizedDate.setHours(0,0,0,0);
+
+        const [hour, minute] = newTimeValue.split(':').map(Number);
+        const newStartTime = new Date(oldStartTime);
+        newStartTime.setHours(hour, minute);
+
+        const resource = resources.find(r => r.id === resourceId);
+        const activity = activities.find(a => a.id === resource.activityId);
+        const area = areas.find(a => a.id === activity.areaId);
+        const dayOfWeek = DAYS_OF_WEEK[oldStartTime.getDay()];
+        const oldTimeStr = oldStartTime.toTimeString().substring(0, 5);
+
+        if (!area) return;
+
+        const overrideDoc = scheduleOverrides.find(o => 
+            o.resourceId === resourceId &&
+            o.date.toDateString() === selectedDate.toDateString()
+        );
+
+        if (overrideDoc) {
+            const updatedSlots = overrideDoc.fixedTimeSlots.map(t => t === oldTimeStr ? newTimeValue : t).sort();
+            const overrideRef = doc(db, `artifacts/${appId}/public/data/scheduleOverrides`, overrideDoc.id);
+            await updateDoc(overrideRef, { fixedTimeSlots: updatedSlots });
+        } else {
+            const daySchedule = area.schedule?.find(s => s.day === dayOfWeek);
+            const baseSlots = daySchedule?.fixedTimeSlots || [];
+            const newSlots = baseSlots.map(t => t === oldTimeStr ? newTimeValue : t).sort();
+            
+            const overridesCollectionRef = collection(db, `artifacts/${appId}/public/data/scheduleOverrides`);
+            await addDoc(overridesCollectionRef, {
+                resourceId: resourceId,
+                areaId: area.id,
+                date: Timestamp.fromDate(normalizedDate),
+                fixedTimeSlots: newSlots
+            });
+        }
+
+        const bookingToUpdate = bookings.find(b =>
+            b.items.some(item =>
+                item.resourceIds.includes(resourceId) &&
+                item.startTime.getTime() === oldStartTime.getTime()
+            )
+        );
+
+        if (bookingToUpdate) {
+            const updatedItems = bookingToUpdate.items.map(item => {
+                let newStartTimeForThisItem = item.startTime;
+                if (item.resourceIds.includes(resourceId) && item.startTime.getTime() === oldStartTime.getTime()) {
+                    newStartTimeForThisItem = newStartTime;
+                }
+                return {
+                    ...item,
+                    startTime: Timestamp.fromDate(newStartTimeForThisItem)
+                };
+            });
+            
+            const bookingRef = doc(db, `artifacts/${appId}/public/data/bookings`, bookingToUpdate.id);
+            await updateDoc(bookingRef, { items: updatedItems });
+        }
+    };
     
     const headerHeight = `h-[${ROW_HEIGHT_REM}rem]`;
-    const rowHeightClass = `h-10`; // 40px
+    const rowHeightClass = `h-10`;
 
     const filteredBookings = useMemo(() => {
         return bookings.filter(booking => 
@@ -511,8 +683,7 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                     }
                 });
 
-                const activeLinkGroupsInInterval = new Set();
-                const bookedResourcesInInterval = new Set();
+                const activeStaffUnits = new Set();
 
                 filteredBookings.forEach(booking => {
                     booking.items.forEach(item => {
@@ -521,20 +692,15 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                             const itemEnd = new Date(item.startTime.getTime() + item.duration * 60 * 1000);
                             if (item.startTime < interval.end && itemEnd > interval.start) {
                                 item.resourceIds.forEach(resId => {
-                                    bookedResourcesInInterval.add(resId);
-                                    const group = resourceLinks.find(g => g.resourceIds.includes(resId));
-                                    if (group) {
-                                        activeLinkGroupsInInterval.add(group.id);
-                                    } else {
-                                        activeLinkGroupsInInterval.add(resId);
-                                    }
+                                    const linkGroup = resourceLinks.find(g => g.resourceIds.includes(resId));
+                                    activeStaffUnits.add(linkGroup ? linkGroup.id : resId);
                                 });
                             }
                         }
                     });
                 });
                 
-                const staffUsed = activeLinkGroupsInInterval.size;
+                const staffUsed = activeStaffUnits.size;
 
                 if (staffUsed >= staffAvailable) {
                     const resourcesInArea = resources.filter(r => {
@@ -543,19 +709,10 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                     });
                     
                     resourcesInArea.forEach(resource => {
-                        if (bookedResourcesInInterval.has(resource.id)) return;
-
                         const linkGroupOfResource = resourceLinks.find(g => g.resourceIds.includes(resource.id));
-                        
-                        if (linkGroupOfResource) {
-                            if (!activeLinkGroupsInInterval.has(linkGroupOfResource.id)) {
-                                 const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
-                                 if (!addedSlots.has(slotIdentifier)) {
-                                     slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
-                                     addedSlots.add(slotIdentifier);
-                                 }
-                            }
-                        } else { 
+                        const resourceStaffUnit = linkGroupOfResource ? linkGroupOfResource.id : resource.id;
+
+                        if (!activeStaffUnits.has(resourceStaffUnit)) {
                              const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                              if (!addedSlots.has(slotIdentifier)) {
                                  slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
@@ -610,7 +767,7 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
             </div>
             <div ref={timelineBodyRef} className="flex-grow overflow-auto">
                 <div className="relative min-w-max">
-                    <div ref={timeHeaderRef} className={`flex sticky top-0 z-10 bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 ${headerHeight}`}>
+                    <div ref={timeHeaderRef} className={`flex sticky top-0 z-10 bg-gray-800 border-b border-gray-600 ${headerHeight}`}>
                         {timeSlots.slice(0, -1).map(time => (
                             <div key={time} className={`w-16 flex-shrink-0 text-center text-xs text-gray-400 flex items-center justify-center border-r border-gray-700`}>
                                 {time.endsWith(':00') ? <strong>{time}</strong> : <span className="text-gray-600">·</span>}
@@ -633,6 +790,8 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                                             getBookingItemPosition={getBookingItemPosition}
                                             filteredBookings={filteredBookings}
                                             unavailableSlots={unavailableSlots}
+                                            onUpdateTimeSlot={handleUpdateTimeSlot}
+                                            scheduleOverrides={scheduleOverrides}
                                         />
                                     ) : (
                                         timeSlots.slice(0, -1).map((time, i) => (
@@ -1021,7 +1180,8 @@ function ResourceLinkManager({ db, appId, resources, activities, resourceLinks }
 
     const handleSaveGroup = async () => {
         if (selectedResources.length < 2) {
-            alert("Please select at least two resources to link.");
+            // Replace alert with a more user-friendly notification if possible
+            console.warn("Please select at least two resources to link.");
             return;
         }
         const collectionRef = collection(db, `artifacts/${appId}/public/data/resourceLinks`);
@@ -1088,7 +1248,7 @@ function ResourceLinkManager({ db, appId, resources, activities, resourceLinks }
     );
 }
 
-// --- Area Manager Component (Updated) ---
+// --- Area Manager Component (Updated with Bug Fix) ---
 function AreaManager({ db, appId, areas }) {
     const defaultSchedule = DAYS_OF_WEEK.map(day => ({ 
         day, 
@@ -1190,7 +1350,7 @@ function AreaManager({ db, appId, areas }) {
                 day,
                 isOpen: existingDay?.isOpen ?? true,
                 staffBlocks: existingDay?.staffBlocks?.length > 0 ? existingDay.staffBlocks : defaultDaySchedule.staffBlocks,
-                fixedTimeSlots: existingDay?.fixedTimeSlots || []
+                fixedTimeSlots: existingDay?.fixedTimeSlots ? [...new Set(existingDay.fixedTimeSlots)].sort() : []
             };
         });
         setSchedule(areaSchedule);
@@ -1289,24 +1449,24 @@ function AreaManager({ db, appId, areas }) {
 }
 
 
-// --- Booking Modal Component ---
-function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate }) {
+// --- Booking Modal Component (Updated with Clash Prevention) ---
+function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas }) {
     const [customerName, setCustomerName] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ phone: '', email: '' });
     const [groupSize, setGroupSize] = useState(2);
     const [bookingItems, setBookingItems] = useState([]);
     const [notes, setNotes] = useState('');
     const [selectedAddOns, setSelectedAddOns] = useState([]);
+    const [modalError, setModalError] = useState(null); // New state for modal-specific errors
 
     const [customerSearch, setCustomerSearch] = useState('');
     const [customerSuggestions, setCustomerSuggestions] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const [selectedCustomerId, setSelectedCustomerId] = useState(null);
-
+    
     const resetModalState = useCallback(() => {
         const defaultStartTime = new Date(selectedDate);
-        defaultStartTime.setHours(12, 0, 0, 0); // Default to noon on the selected date
-        
+        defaultStartTime.setHours(12, 0, 0, 0);
         setCustomerName('');
         setCustomerDetails({ phone: '', email: '' });
         setGroupSize(2);
@@ -1316,6 +1476,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
         setCustomerSearch('');
         setCustomerSuggestions([]);
         setSelectedCustomerId(null);
+        setModalError(null);
     }, [initialData, selectedDate]);
 
     useEffect(() => {
@@ -1335,6 +1496,11 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             }
         }
     }, [booking, isOpen, customers, resetModalState]);
+
+    // Clear error when user makes changes
+    useEffect(() => {
+        setModalError(null);
+    }, [bookingItems, customerName, groupSize]);
 
     useEffect(() => {
         if (customerSearch.length > 1) {
@@ -1441,10 +1607,102 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
     }, [bookingItems, activities, groupSize, selectedAddOns, addOns]);
 
     const handleSave = async () => {
-        if (bookingItems.some(item => !item.activityId || item.resourceIds.length === 0) || isSaving) {
-            alert("Please select an activity and at least one resource for each item.");
+        setModalError(null);
+        if (bookingItems.some(item => !item.activityId || item.resourceIds.length === 0)) {
+            setModalError("Please select an activity and at least one resource for each item.");
             return;
         }
+        
+        // --- NEW, MORE ACCURATE CONFLICT VALIDATION ---
+        const allOtherBookings = booking ? bookings.filter(b => b.id !== booking.id) : bookings;
+
+        for (const itemToSave of bookingItems) {
+            const itemStart = itemToSave.startTime;
+            const itemEnd = new Date(itemStart.getTime() + itemToSave.duration * 60 * 1000);
+            
+            const activity = activities.find(a => a.id === itemToSave.activityId);
+            const area = areas.find(a => a.id === activity?.areaId);
+            if (!area) {
+                setModalError(`Configuration error: Activity "${activity?.name}" is not assigned to an area.`);
+                return;
+            }
+
+            const dayOfWeek = DAYS_OF_WEEK[itemStart.getDay()];
+            const daySchedule = area.schedule?.find(s => s.day === dayOfWeek);
+            if (!daySchedule || !daySchedule.isOpen) {
+                setModalError(`The venue is closed at the selected time.`);
+                return;
+            }
+
+            let staffAvailable = 0;
+            daySchedule.staffBlocks.forEach(block => {
+                const blockStart = new Date(itemStart);
+                const [startH, startM] = block.start.split(':');
+                blockStart.setHours(startH, startM, 0, 0);
+
+                const blockEnd = new Date(itemStart);
+                const [endH, endM] = block.end.split(':');
+                blockEnd.setHours(endH, endM, 0, 0);
+
+                if (itemStart >= blockStart && itemEnd <= blockEnd) {
+                    staffAvailable = block.count;
+                }
+            });
+
+            if (staffAvailable === 0) {
+                setModalError(`No staff are scheduled for the selected time slot.`);
+                return;
+            }
+
+            for (const existingBooking of allOtherBookings) {
+                for (const existingItem of existingBooking.items) {
+                    const existingStart = existingItem.startTime;
+                    const existingEnd = new Date(existingStart.getTime() + existingItem.duration * 60 * 1000);
+                    if (itemStart < existingEnd && itemEnd > existingStart) {
+                        const hasDirectClash = itemToSave.resourceIds.some(resId => existingItem.resourceIds.includes(resId));
+                        if (hasDirectClash) {
+                            const clashingResource = resources.find(r => itemToSave.resourceIds.includes(r.id) && existingItem.resourceIds.includes(r.id));
+                            setModalError(`Booking Conflict: "${clashingResource?.name}" is already booked at this time.`);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            const activeStaffUnits = new Set();
+            
+            allOtherBookings.forEach(b => {
+                b.items.forEach(i => {
+                    const iActivity = activities.find(a => a.id === i.activityId);
+                    if (iActivity?.areaId !== area.id) return;
+
+                    const iStart = i.startTime;
+                    const iEnd = new Date(iStart.getTime() + i.duration * 60 * 1000);
+
+                    if (itemStart < iEnd && itemEnd > iStart) {
+                        i.resourceIds.forEach(resId => {
+                            const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
+                            activeStaffUnits.add(linkGroup ? linkGroup.id : resId);
+                        });
+                    }
+                });
+            });
+
+            const newStaffUnits = new Set();
+            itemToSave.resourceIds.forEach(resId => {
+                const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
+                newStaffUnits.add(linkGroup ? linkGroup.id : resId);
+            });
+            
+            const staffRequired = activeStaffUnits.size + newStaffUnits.size;
+
+            if (staffRequired > staffAvailable) {
+                setModalError(`Booking Conflict: Not enough staff available. ${staffRequired} needed, but only ${staffAvailable} are scheduled.`);
+                return;
+            }
+        }
+        // --- END CONFLICT VALIDATION ---
+
         setIsSaving(true);
 
         const finalCustomerName = customerName.trim() || 'Walk-In';
@@ -1487,7 +1745,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             onClose();
         } catch (error) {
             console.error("Error saving booking:", error);
-            alert("Failed to save booking.");
+            setModalError("Failed to save booking. Please try again.");
         } finally {
             setIsSaving(false);
         }
@@ -1500,7 +1758,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             onClose();
         } catch (error) {
             console.error("Error deleting booking:", error);
-            alert("Failed to delete booking.");
+            setModalError("Failed to delete booking.");
         } finally {
             setIsSaving(false);
         }
@@ -1631,18 +1889,26 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                             </button>
                         )}
                     </div>
-                    <div className="flex items-center gap-4">
-                        <PriceBreakdown 
-                            bookingItems={bookingItems}
-                            selectedAddOns={selectedAddOns}
-                            groupSize={groupSize}
-                            activities={activities}
-                            addOns={addOns}
-                            totalPrice={calculatePrice()}
-                        />
-                        <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
-                        </button>
+                    <div className="flex flex-col items-end gap-2">
+                        {modalError && (
+                            <div className="p-2 bg-red-500/20 border border-red-500/50 text-red-300 rounded-lg text-sm flex items-center gap-2">
+                                <AlertTriangle size={16} />
+                                <span>{modalError}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-4">
+                            <PriceBreakdown 
+                                bookingItems={bookingItems}
+                                selectedAddOns={selectedAddOns}
+                                groupSize={groupSize}
+                                activities={activities}
+                                addOns={addOns}
+                                totalPrice={calculatePrice()}
+                            />
+                            <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
+                            </button>
+                        </div>
                     </div>
                 </footer>
             </div>
