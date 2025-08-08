@@ -8,15 +8,14 @@ import {
 import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin } from 'lucide-react';
 
 // --- Firebase Configuration ---
-// This configuration is provided and should be used to initialize Firebase.
 const firebaseConfig = {
-  apiKey: "AIzaSyA3NJOCZe2zFw6Ueu5gBt9o2UgFgvU8eI0",
-  authDomain: "serve-social-booking.firebaseapp.com",
-  projectId: "serve-social-booking",
-  storageBucket: "serve-social-booking.appspot.com",
-  messagingSenderId: "279115505018",
-  appId: "1:279115505018:web:204a8be5d1c11934628ac3",
-  measurementId: "G-F69VTE72T1"
+    apiKey: "AIzaSyA3NJOCZe2zFw6Ueu5gBt9o2UgFgvU8eI0",
+    authDomain: "serve-social-booking.firebaseapp.com",
+    projectId: "serve-social-booking",
+    storageBucket: "serve-social-booking.appspot.com",
+    messagingSenderId: "279115505018",
+    appId: "1:279115505018:web:204a8be5d1c11934628ac3",
+    measurementId: "G-F69VTE72T1"
 };
 
 // --- Helper Functions & Constants ---
@@ -166,15 +165,15 @@ export default function App() {
         if (initialTime && resourceId) {
              const resource = resources.find(r => r.id === resourceId);
              if (resource) {
-                initialData = {
-                    items: [{
-                        id: Date.now(),
-                        activityId: resource.activityId,
-                        resourceIds: [resourceId],
-                        startTime: initialTime,
-                        duration: 60
-                    }]
-                };
+                 initialData = {
+                     items: [{
+                         id: Date.now(),
+                         activityId: resource.activityId,
+                         resourceIds: [resourceId],
+                         startTime: initialTime,
+                         duration: 60
+                     }]
+                 };
              }
         }
         setModalInitialData(initialData);
@@ -305,6 +304,79 @@ export default function App() {
     );
 }
 
+// --- Fixed Time Slot Component (New) ---
+function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking, getBookingItemPosition, filteredBookings, unavailableSlots }) {
+    const slots = useMemo(() => {
+        const area = areas.find(a => a.id === activity.areaId);
+        if (!area) return [];
+
+        const dayOfWeek = DAYS_OF_WEEK[selectedDate.getDay()];
+        const daySchedule = area.schedule?.find(s => s.day === dayOfWeek);
+        if (!daySchedule || !daySchedule.isOpen || !daySchedule.fixedTimeSlots) {
+            return [];
+        }
+
+        return daySchedule.fixedTimeSlots.map(time => {
+            const [hour, minute] = time.split(':').map(Number);
+            const startTime = new Date(selectedDate);
+            startTime.setHours(hour, minute, 0, 0);
+            
+            const duration = 60; 
+            const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
+
+            // Check for conflicts
+            const isBooked = filteredBookings.some(b => 
+                b.items.some(item => {
+                    const itemEnd = new Date(item.startTime.getTime() + item.duration * 60 * 1000);
+                    return item.resourceIds.includes(resource.id) && item.startTime < endTime && itemEnd > startTime;
+                })
+            );
+
+            const isUnavailable = unavailableSlots.some(slot => {
+                const slotEnd = new Date(slot.startTime.getTime() + slot.duration * 60 * 1000);
+                return slot.resourceId === resource.id && slot.startTime < endTime && slotEnd > startTime;
+            });
+            
+            if (isBooked || isUnavailable) {
+                return null;
+            }
+
+            return { startTime, duration };
+        }).filter(Boolean); // remove nulls
+
+    }, [resource.id, activity.areaId, areas, selectedDate, filteredBookings, unavailableSlots]);
+
+    return (
+        <>
+            {/* Render the background grid lines first */}
+            {timeSlots.slice(0, -1).map((time, i) => (
+                <div
+                    key={i}
+                    className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'}`}
+                ></div>
+            ))}
+
+            {/* Overlay the available slots */}
+            {slots.map((slot, index) => {
+                const { left, width } = getBookingItemPosition(slot);
+                return (
+                    <div
+                        key={index}
+                        className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border-2 border-dashed border-gray-600 hover:border-blue-400"
+                        style={{ left, width }}
+                        onClick={() => onNewBooking(null, slot.startTime, resource.id)}
+                    >
+                        <div className="text-center">
+                            <p className="text-xs font-semibold text-gray-300">Available</p>
+                            <p className="text-xs text-gray-500">{slot.startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        </div>
+                    </div>
+                );
+            })}
+        </>
+    );
+}
+
 // --- Timeline View Component ---
 function TimelineView({ activities, resources, bookings, addOns, resourceLinks, areas, onNewBooking, selectedDate }) {
     const db = getFirestore();
@@ -361,7 +433,7 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
         const totalStartMinutes = (startHour - 8) * 60 + startMinute;
         
         const left = `calc(${(totalStartMinutes / 15)} * 4rem)`;
-        const width = `calc(${(item.duration / 15)} * 4rem)`;
+        const width = `calc(${(item.duration / 15)} * 4rem - 2px)`; // Subtract 2px for gap
 
         return { left, width };
     };
@@ -479,15 +551,15 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                             if (!activeLinkGroupsInInterval.has(linkGroupOfResource.id)) {
                                  const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                                  if (!addedSlots.has(slotIdentifier)) {
-                                    slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
-                                    addedSlots.add(slotIdentifier);
+                                     slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
+                                     addedSlots.add(slotIdentifier);
                                  }
                             }
                         } else { 
                              const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                              if (!addedSlots.has(slotIdentifier)) {
-                                slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
-                                addedSlots.add(slotIdentifier);
+                                 slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
+                                 addedSlots.add(slotIdentifier);
                              }
                         }
                     });
@@ -551,13 +623,26 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                             <div className="h-8 border-b border-gray-600"></div>
                             {activity.resources.map(resource => (
                                 <div key={resource.id} className={`relative flex border-b border-gray-700 ${rowHeightClass}`}>
-                                    {timeSlots.slice(0, -1).map((time, i) => (
-                                        <div
-                                            key={i}
-                                            className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
-                                            onClick={() => onNewBooking(null, new Date(selectedDate.setHours(parseInt(time.split(':')[0]), parseInt(time.split(':')[1]), 0, 0)), resource.id)}
-                                        ></div>
-                                    ))}
+                                    {activity.type === 'Fixed Time' ? (
+                                        <FixedTimeSlots
+                                            resource={resource}
+                                            activity={activity}
+                                            areas={areas}
+                                            selectedDate={selectedDate}
+                                            onNewBooking={onNewBooking}
+                                            getBookingItemPosition={getBookingItemPosition}
+                                            filteredBookings={filteredBookings}
+                                            unavailableSlots={unavailableSlots}
+                                        />
+                                    ) : (
+                                        timeSlots.slice(0, -1).map((time, i) => (
+                                            <div
+                                                key={i}
+                                                className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
+                                                onClick={() => onNewBooking(null, new Date(selectedDate.setHours(parseInt(time.split(':')[0]), parseInt(time.split(':')[1]), 0, 0)), resource.id)}
+                                            ></div>
+                                        ))
+                                    )}
                                     {filteredBookings.flatMap(booking => booking.items
                                         .filter(item => item.resourceIds.includes(resource.id))
                                         .map(item => {
@@ -595,13 +680,13 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                                         })
                                     )}
                                      {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
-                                        const { left, width } = getBookingItemPosition(slot);
-                                        return (
-                                            <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
-                                                <div className="h-full w-full bg-stripes"></div>
-                                            </div>
-                                        )
-                                    })}
+                                         const { left, width } = getBookingItemPosition(slot);
+                                         return (
+                                             <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
+                                                 <div className="h-full w-full bg-stripes"></div>
+                                             </div>
+                                         )
+                                     })}
                                 </div>
                             ))}
                         </div>
@@ -1003,11 +1088,49 @@ function ResourceLinkManager({ db, appId, resources, activities, resourceLinks }
     );
 }
 
-// --- Area Manager Component ---
+// --- Area Manager Component (Updated) ---
 function AreaManager({ db, appId, areas }) {
+    const defaultSchedule = DAYS_OF_WEEK.map(day => ({ 
+        day, 
+        isOpen: true, 
+        staffBlocks: [{id: Date.now() + Math.random(), start: '09:00', end: '22:00', count: 1}],
+        fixedTimeSlots: []
+    }));
+
     const [name, setName] = useState('');
-    const [schedule, setSchedule] = useState(DAYS_OF_WEEK.map(day => ({ day, isOpen: true, staffBlocks: [{id: 1, start: '09:00', end: '22:00', count: 1}] })));
+    const [schedule, setSchedule] = useState(defaultSchedule);
     const [editingId, setEditingId] = useState(null);
+    const [newTimeInputs, setNewTimeInputs] = useState(
+        DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: '' }), {})
+    );
+
+    const handleNewTimeInputChange = (day, value) => {
+        setNewTimeInputs(prev => ({ ...prev, [day]: value }));
+    };
+    
+    const addFixedTimeSlot = (day) => {
+        const time = newTimeInputs[day];
+        if (time) {
+            setSchedule(prev => prev.map(item => {
+                if (item.day === day && !item.fixedTimeSlots.includes(time)) {
+                    const newSlots = [...item.fixedTimeSlots, time].sort();
+                    return { ...item, fixedTimeSlots: newSlots };
+                }
+                return item;
+            }));
+            handleNewTimeInputChange(day, ''); 
+        }
+    };
+
+    const removeFixedTimeSlot = (day, timeToRemove) => {
+        setSchedule(prev => prev.map(item => {
+            if (item.day === day) {
+                const newSlots = item.fixedTimeSlots.filter(t => t !== timeToRemove);
+                return { ...item, fixedTimeSlots: newSlots };
+            }
+            return item;
+        }));
+    };
 
     const handleScheduleChange = (day, field, value) => {
         setSchedule(prev => prev.map(item => item.day === day ? { ...item, [field]: value } : item));
@@ -1033,7 +1156,7 @@ function AreaManager({ db, appId, areas }) {
     };
 
     const removeBlock = (day, id) => {
-         setSchedule(prev => prev.map(item => {
+       setSchedule(prev => prev.map(item => {
             if (item.day === day) {
                 const newBlocks = item.staffBlocks.filter(b => b.id !== id);
                 return { ...item, staffBlocks: newBlocks };
@@ -1059,7 +1182,18 @@ function AreaManager({ db, appId, areas }) {
     const handleEdit = (area) => {
         setEditingId(area.id);
         setName(area.name);
-        setSchedule(area.schedule || DAYS_OF_WEEK.map(day => ({ day, isOpen: true, staffBlocks: [{id: 1, start: '09:00', end: '22:00', count: 1}] })));
+        
+        const defaultDaySchedule = { isOpen: true, staffBlocks: [{id: Date.now() + Math.random(), start: '09:00', end: '22:00', count: 1}], fixedTimeSlots: [] };
+        const areaSchedule = DAYS_OF_WEEK.map(day => {
+            const existingDay = area.schedule?.find(s => s.day === day);
+            return { 
+                day,
+                isOpen: existingDay?.isOpen ?? true,
+                staffBlocks: existingDay?.staffBlocks?.length > 0 ? existingDay.staffBlocks : defaultDaySchedule.staffBlocks,
+                fixedTimeSlots: existingDay?.fixedTimeSlots || []
+            };
+        });
+        setSchedule(areaSchedule);
     };
 
     const handleDelete = async (id) => {
@@ -1068,7 +1202,7 @@ function AreaManager({ db, appId, areas }) {
 
     const resetForm = () => {
         setName('');
-        setSchedule(DAYS_OF_WEEK.map(day => ({ day, isOpen: true, staffBlocks: [{id: 1, start: '09:00', end: '22:00', count: 1}] })));
+        setSchedule(defaultSchedule);
         setEditingId(null);
     };
 
@@ -1078,24 +1212,51 @@ function AreaManager({ db, appId, areas }) {
                 <h3 className="text-xl font-semibold mb-4">{editingId ? 'Edit Area' : 'Add New Area'}</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <InputField label="Area Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Main Floor" Icon={MapPin} required={true} />
-                    <div className="space-y-4">
-                        {schedule.map(({ day, isOpen, staffBlocks }) => (
+                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                        {schedule.map(({ day, isOpen, staffBlocks, fixedTimeSlots }) => (
                             <div key={day} className="bg-gray-800 p-3 rounded-lg">
                                 <label className="text-sm font-semibold text-gray-200 flex items-center gap-2 mb-2">
                                     <input type="checkbox" checked={isOpen} onChange={(e) => handleScheduleChange(day, 'isOpen', e.target.checked)} className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600"/>
                                     {day}
                                 </label>
                                 {isOpen && (
-                                    <div className="space-y-2 pl-6">
-                                        {staffBlocks.map((block, index) => (
-                                            <div key={block.id || index} className="grid grid-cols-4 gap-2 items-center">
-                                                <InputField type="time" value={block.start} onChange={(e) => handleBlockChange(day, block.id, 'start', e.target.value)} required={true}/>
-                                                <InputField type="time" value={block.end} onChange={(e) => handleBlockChange(day, block.id, 'end', e.target.value)} required={true}/>
-                                                <InputField type="number" value={block.count} onChange={(e) => handleBlockChange(day, block.id, 'count', e.target.value)} required={true} placeholder="Staff"/>
-                                                <button type="button" onClick={() => removeBlock(day, block.id)} className="p-2 text-red-400 hover:bg-gray-700 rounded-md"><Trash2 size={16}/></button>
+                                    <div className="pl-6 space-y-4">
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-400">Staff Availability</label>
+                                            <div className="space-y-2 mt-1">
+                                                {staffBlocks.map((block, index) => (
+                                                    <div key={block.id || index} className="grid grid-cols-4 gap-2 items-center">
+                                                        <InputField type="time" value={block.start} onChange={(e) => handleBlockChange(day, block.id, 'start', e.target.value)} required={true}/>
+                                                        <InputField type="time" value={block.end} onChange={(e) => handleBlockChange(day, block.id, 'end', e.target.value)} required={true}/>
+                                                        <InputField type="number" value={block.count} onChange={(e) => handleBlockChange(day, block.id, 'count', Number(e.target.value))} required={true} placeholder="Staff"/>
+                                                        <button type="button" onClick={() => removeBlock(day, block.id)} className="p-2 text-red-400 hover:bg-gray-700 rounded-md self-end mb-1"><Trash2 size={16}/></button>
+                                                    </div>
+                                                ))}
+                                                <button type="button" onClick={() => addBlock(day)} className="text-xs text-blue-400 hover:underline">+ Add Staff Block</button>
                                             </div>
-                                        ))}
-                                        <button type="button" onClick={() => addBlock(day)} className="text-xs text-blue-400 hover:underline">+ Add Time Block</button>
+                                        </div>
+                                        
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-400">Fixed Activity Start Times</label>
+                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                {fixedTimeSlots.map(time => (
+                                                    <div key={time} className="bg-gray-700 px-2 py-1 rounded-md text-sm flex items-center gap-1">
+                                                        <span>{time}</span>
+                                                        <button type="button" onClick={() => removeFixedTimeSlot(day, time)} className="text-gray-400 hover:text-white"><X size={14} /></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2 mt-2">
+                                                <input 
+                                                    type="time" 
+                                                    step="900"
+                                                    value={newTimeInputs[day]}
+                                                    onChange={(e) => handleNewTimeInputChange(day, e.target.value)}
+                                                    className="w-24 bg-gray-900 border border-gray-600 rounded-lg p-1 text-xs"
+                                                />
+                                                <button type="button" onClick={() => addFixedTimeSlot(day)} className="text-xs bg-blue-600 hover:bg-blue-700 px-2 rounded-md">Add</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1713,7 +1874,7 @@ function PriceBreakdown({ bookingItems, selectedAddOns, groupSize, activities, a
 function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength }) {
     return (
         <div>
-            <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>
+            {label && <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>}
             <div className="relative">
                 {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />}
                 <input
@@ -1724,6 +1885,7 @@ function InputField({ label, type = 'text', value, onChange, placeholder, Icon, 
                     className={`w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${Icon ? 'pl-10' : 'pl-3'}`}
                     required={required}
                     maxLength={maxLength}
+                    step={type === 'time' ? 900 : undefined}
                 />
             </div>
         </div>
