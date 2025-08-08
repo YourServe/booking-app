@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import {
-    getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc,
-    onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp
+import { 
+    getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
+    onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
 import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin } from 'lucide-react';
 
 // --- Firebase Configuration ---
+// This configuration is provided and should be used to initialize Firebase.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_API_KEY,
-  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_APP_ID,
-  measurementId: import.meta.env.VITE_MEASUREMENT_ID
+  apiKey: "AIzaSyA3NJOCZe2zFw6Ueu5gBt9o2UgFgvU8eI0",
+  authDomain: "serve-social-booking.firebaseapp.com",
+  projectId: "serve-social-booking",
+  storageBucket: "serve-social-booking.appspot.com",
+  messagingSenderId: "279115505018",
+  appId: "1:279115505018:web:204a8be5d1c11934628ac3",
+  measurementId: "G-F69VTE72T1"
 };
-
 
 // --- Helper Functions & Constants ---
 const timeSlots = Array.from({ length: 15 * 4 + 1 }, (_, i) => {
@@ -130,7 +130,7 @@ export default function App() {
                 switch (collectionName) {
                     case 'activities': setActivities(data.sort((a, b) => a.name.localeCompare(b.name))); break;
                     case 'resources': setResources(data.sort((a, b) => a.name.localeCompare(b.name))); break;
-                    case 'bookings':
+                    case 'bookings': 
                         const parsedBookings = data.map(b => ({
                             ...b,
                             items: (b.items || []).map(item => ({
@@ -138,7 +138,7 @@ export default function App() {
                                 startTime: item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime)
                             }))
                         }));
-                        setBookings(parsedBookings);
+                        setBookings(parsedBookings); 
                         break;
                     case 'customers': setCustomers(data); break;
                     case 'addOns': setAddOns(data.sort((a, b) => a.name.localeCompare(b.name))); break;
@@ -166,15 +166,15 @@ export default function App() {
         if (initialTime && resourceId) {
              const resource = resources.find(r => r.id === resourceId);
              if (resource) {
-                 initialData = {
-                     items: [{
-                         id: Date.now(),
-                         activityId: resource.activityId,
-                         resourceIds: [resourceId],
-                         startTime: initialTime,
-                         duration: 60
-                     }]
-                 };
+                initialData = {
+                    items: [{
+                        id: Date.now(),
+                        activityId: resource.activityId,
+                        resourceIds: [resourceId],
+                        startTime: initialTime,
+                        duration: 60
+                    }]
+                };
              }
         }
         setModalInitialData(initialData);
@@ -220,18 +220,18 @@ export default function App() {
 
                 <nav className="flex items-center gap-4">
                      {view === 'timeline' && (
-                         <>
-                             <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold">
-                                 Today
-                             </button>
-                             <button
-                                 onClick={() => handleOpenBookingModal(null, selectedDate)}
-                                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
-                             >
-                                 <Plus size={16} /> New
-                             </button>
-                         </>
-                     )}
+                        <>
+                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold">
+                                Today
+                            </button>
+                            <button
+                                onClick={() => handleOpenBookingModal(null, selectedDate)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
+                            >
+                                <Plus size={16} /> New
+                            </button>
+                        </>
+                    )}
                     <div className="flex items-center gap-2 p-1 bg-gray-800 rounded-lg">
                         <button
                             onClick={() => setView('timeline')}
@@ -479,15 +479,15 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                             if (!activeLinkGroupsInInterval.has(linkGroupOfResource.id)) {
                                  const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                                  if (!addedSlots.has(slotIdentifier)) {
-                                     slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
-                                     addedSlots.add(slotIdentifier);
+                                    slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
+                                    addedSlots.add(slotIdentifier);
                                  }
                             }
                         } else { 
                              const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                              if (!addedSlots.has(slotIdentifier)) {
-                                 slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
-                                 addedSlots.add(slotIdentifier);
+                                slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
+                                addedSlots.add(slotIdentifier);
                              }
                         }
                     });
@@ -595,13 +595,13 @@ function TimelineView({ activities, resources, bookings, addOns, resourceLinks, 
                                         })
                                     )}
                                      {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
-                                         const { left, width } = getBookingItemPosition(slot);
-                                         return (
-                                             <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
-                                                 <div className="h-full w-full bg-stripes"></div>
-                                             </div>
-                                         )
-                                     })}
+                                        const { left, width } = getBookingItemPosition(slot);
+                                        return (
+                                            <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
+                                                <div className="h-full w-full bg-stripes"></div>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
                             ))}
                         </div>
@@ -663,30 +663,12 @@ function ActivityManager({ db, appId, activities, areas }) {
     const [price, setPrice] = useState('');
     const [areaId, setAreaId] = useState('');
     const [editingId, setEditingId] = useState(null);
-    const [allowedStartTimes, setAllowedStartTimes] = useState([]);
-    const [newStartTime, setNewStartTime] = useState('');
-
-    const handleAddStartTime = () => {
-        if (newStartTime && !allowedStartTimes.includes(newStartTime)) {
-            const newTimes = [...allowedStartTimes, newStartTime].sort();
-            setAllowedStartTimes(newTimes);
-            setNewStartTime('');
-        }
-    };
-
-    const handleRemoveStartTime = (timeToRemove) => {
-        setAllowedStartTimes(allowedStartTimes.filter(time => time !== timeToRemove));
-    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!name || !price || !areaId) return;
         const collectionRef = collection(db, `artifacts/${appId}/public/data/activities`);
         const data = { name, type, price: Number(price), areaId };
-
-        if (type === 'Fixed Time') {
-            data.allowedStartTimes = allowedStartTimes;
-        }
 
         if (editingId) {
             await setDoc(doc(collectionRef, editingId), data);
@@ -702,7 +684,6 @@ function ActivityManager({ db, appId, activities, areas }) {
         setType(activity.type);
         setPrice(activity.price);
         setAreaId(activity.areaId || '');
-        setAllowedStartTimes(activity.allowedStartTimes || []);
     };
 
     const handleDelete = async (id) => {
@@ -715,8 +696,6 @@ function ActivityManager({ db, appId, activities, areas }) {
         setPrice('');
         setAreaId('');
         setEditingId(null);
-        setAllowedStartTimes([]);
-        setNewStartTime('');
     };
 
     return (
@@ -739,30 +718,6 @@ function ActivityManager({ db, appId, activities, areas }) {
                             <option>Flexi Time</option>
                         </select>
                     </div>
-                    {type === 'Fixed Time' && (
-                        <div>
-                            <label className="text-sm font-medium text-gray-400 mb-1 block">Allowed Start Times</label>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="time"
-                                    value={newStartTime}
-                                    onChange={(e) => setNewStartTime(e.target.value)}
-                                    className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <button type="button" onClick={handleAddStartTime} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Add</button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {allowedStartTimes.map(time => (
-                                    <div key={time} className="bg-gray-700 rounded-full px-3 py-1 text-sm flex items-center gap-2">
-                                        {time}
-                                        <button type="button" onClick={() => handleRemoveStartTime(time)} className="text-gray-400 hover:text-white">
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                     <InputField label={type === 'Fixed Time' ? 'Price per Person' : 'Price per Person (per 15 min)'} type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g., 25" Icon={DollarSign} required={true}/>
                     <div className="flex gap-2">
                         <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">{editingId ? 'Update' : 'Save'}</button>
@@ -778,9 +733,6 @@ function ActivityManager({ db, appId, activities, areas }) {
                             <div>
                                 <p className="font-semibold">{act.name}</p>
                                 <p className="text-xs text-gray-400">{act.type} - ${act.price}{act.type === 'Flexi Time' ? '/person/15min' : '/person'}</p>
-                                {act.type === 'Fixed Time' && act.allowedStartTimes && act.allowedStartTimes.length > 0 && (
-                                    <p className="text-xs text-gray-500 mt-1">Starts: {act.allowedStartTimes.join(', ')}</p>
-                                )}
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={() => handleEdit(act)} className="p-2 hover:bg-gray-700 rounded-md"><Settings size={16} /></button>
@@ -1259,7 +1211,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
         setBookingItems(prev => prev.filter(item => item.id !== id));
     };
 
-    const handleItemChange = useCallback((id, field, value) => {
+    const handleItemChange = (id, field, value) => {
         setBookingItems(prev => prev.map(item => {
             if (item.id === id) {
                 const updatedItem = { ...item, [field]: value };
@@ -1270,7 +1222,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             }
             return item;
         }));
-    }, []);
+    };
 
     const handleItemResourceToggle = (itemId, resourceId) => {
         setBookingItems(prev => prev.map(item => {
@@ -1514,8 +1466,8 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                     <div>
                         {booking && (
                              <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
-                                 <Trash2 size={16} /> Delete
-                             </button>
+                                <Trash2 size={16} /> Delete
+                            </button>
                         )}
                     </div>
                     <div className="flex items-center gap-4">
@@ -1540,36 +1492,11 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
 function BookingItemForm({ item, onItemChange, onResourceToggle, activities, resources }) {
     const selectedActivity = activities.find(a => a.id === item.activityId);
     const isFlexi = selectedActivity?.type === 'Flexi Time';
-    const hasFixedStartTimes = selectedActivity?.type === 'Fixed Time' && Array.isArray(selectedActivity.allowedStartTimes) && selectedActivity.allowedStartTimes.length > 0;
-
-    useEffect(() => {
-        // When activity selection changes, if it's a fixed-time activity, set the time to the first available option.
-        if (item.activityId) {
-            const activity = activities.find(a => a.id === item.activityId);
-            if (activity?.type === 'Fixed Time' && Array.isArray(activity.allowedStartTimes) && activity.allowedStartTimes.length > 0) {
-                const [hour, minute] = activity.allowedStartTimes[0].split(':').map(Number);
-                const newDate = new Date(item.startTime);
-                newDate.setHours(hour, minute, 0, 0);
-                onItemChange(item.id, 'startTime', newDate);
-            }
-        }
-    }, [item.activityId, activities, item.id, onItemChange]);
-
 
     const handleDateInputChange = (e) => {
         const newDate = new Date(item.startTime);
         const [year, month, day] = e.target.value.split('-').map(Number);
         newDate.setFullYear(year, month - 1, day);
-        onItemChange(item.id, 'startTime', newDate);
-    };
-    
-    const handleFixedTimeChange = (e) => {
-        const newTime = e.target.value;
-        if (!newTime) return;
-
-        const [hour, minute] = newTime.split(':').map(Number);
-        const newDate = new Date(item.startTime);
-        newDate.setHours(hour, minute, 0, 0);
         onItemChange(item.id, 'startTime', newDate);
     };
 
@@ -1619,41 +1546,27 @@ function BookingItemForm({ item, onItemChange, onResourceToggle, activities, res
                         <label className="text-sm font-medium text-gray-400 mb-1 block">Date</label>
                         <input type="date" value={dateForInput} onChange={handleDateInputChange} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                     </div>
-                    {hasFixedStartTimes ? (
-                         <div>
-                            <label className="text-sm font-medium text-gray-400 mb-1 block">Start Time</label>
-                            <select
-                                value={`${String(item.startTime.getHours()).padStart(2, '0')}:${String(item.startTime.getMinutes()).padStart(2, '0')}`}
-                                onChange={handleFixedTimeChange}
-                                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="" disabled>Select a time</option>
-                                {selectedActivity.allowedStartTimes.map(time => <option key={time} value={time}>{time}</option>)}
+                    <div className="grid grid-cols-3 gap-1">
+                        <div>
+                            <label className="text-sm font-medium text-gray-400 mb-1 block">Hr</label>
+                            <select value={currentHour12} onChange={(e) => handleTimeInputChange('hour', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                {Array.from({length: 12}, (_, i) => i + 1).map(h => <option key={h} value={h}>{h}</option>)}
                             </select>
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-3 gap-1">
-                            <div>
-                                <label className="text-sm font-medium text-gray-400 mb-1 block">Hr</label>
-                                <select value={currentHour12} onChange={(e) => handleTimeInputChange('hour', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                    {Array.from({length: 12}, (_, i) => i + 1).map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-400 mb-1 block">Min</label>
-                                <select value={currentMinute} onChange={(e) => handleTimeInputChange('minute', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                    {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                               <label className="text-sm font-medium text-gray-400 mb-1 block">&nbsp;</label>
-                               <select value={currentPeriod} onChange={(e) => handleTimeInputChange('period', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                    <option>AM</option>
-                                    <option>PM</option>
-                               </select>
-                            </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-400 mb-1 block">Min</label>
+                            <select value={currentMinute} onChange={(e) => handleTimeInputChange('minute', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
+                            </select>
                         </div>
-                    )}
+                        <div>
+                           <label className="text-sm font-medium text-gray-400 mb-1 block">&nbsp;</label>
+                           <select value={currentPeriod} onChange={(e) => handleTimeInputChange('period', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option>AM</option>
+                                <option>PM</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
              {isFlexi && (
@@ -1800,7 +1713,7 @@ function PriceBreakdown({ bookingItems, selectedAddOns, groupSize, activities, a
 function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength }) {
     return (
         <div>
-            {label && <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>}
+            <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>
             <div className="relative">
                 {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />}
                 <input

@@ -1,11 +1,11 @@
-// tailwind.config.js
-export default {
+/** @type {import('tailwindcss').Config} */
+module.exports = {
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-    "./*.{js,jsx,ts,tsx}",      // also scan any root-level React files
-    "./public/index.html",      // if you have static HTML here
+    "./index.html",            // your main HTML
+    "./src/**/*.{js,jsx,ts,tsx}" // all your React code
   ],
-  theme: { extend: {} },
+  theme: {
+    extend: {},
+  },
   plugins: [],
 }
