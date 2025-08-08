@@ -1,19 +1,11 @@
-/** @type {import('tailwindcss').Config} */
+// tailwind.config.js
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/**/*.{js,jsx,ts,tsx}",   // if you use src/
+    "./*.{js,jsx,ts,tsx}",           // also scan any root-level .js/.jsx
+    "./public/index.html",           // if you have static html here
   ],
-  safelist: [
-    'bg-blue-600/80',
-    'border-blue-400',
-    'bg-yellow-500/80',
-    'border-yellow-300',
-    'bg-green-600/80',
-    'border-green-400',
-  ],
-  theme: {
-    extend: {},
-  },
+  theme: { extend: {} },
   plugins: [],
 }
