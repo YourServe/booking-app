@@ -1481,6 +1481,81 @@ function AreaManager({ db, appId, areas }) {
     );
 }
 
+// --- Closure Manager Component (New) ---
+function ClosureManager({ db, appId, closures }) {
+  const [newDate, setNewDate] = useState('');
+  const [reason, setReason] = useState('');
+
+  const handleAddClosure = async (e) => {
+    e.preventDefault();
+    if (!newDate) return;
+    const date = new Date(newDate);
+    // Adjust for timezone to store as a pure date
+    date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+    
+    const closureData = {
+      date: Timestamp.fromDate(date),
+      reason: reason.trim()
+    };
+    await addDoc(collection(db, `artifacts/${appId}/public/data/closures`), closureData);
+    setNewDate('');
+    setReason('');
+  };
+
+  const handleDeleteClosure = async (id) => {
+    await deleteDoc(doc(db, `artifacts/${appId}/public/data/closures`, id));
+  };
+
+  const sortedClosures = useMemo(() => 
+    [...closures].sort((a, b) => a.date - b.date), 
+  [closures]);
+
+  return (
+    <div className="grid md:grid-cols-2 gap-8">
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Add Venue Closure</h3>
+        <form onSubmit={handleAddClosure} className="space-y-4 bg-gray-800 p-4 rounded-lg">
+          <InputField 
+            label="Date" 
+            type="date" 
+            value={newDate} 
+            onChange={(e) => setNewDate(e.target.value)} 
+            required={true} 
+          />
+          <InputField 
+            label="Reason (Optional)" 
+            value={reason} 
+            onChange={(e) => setReason(e.target.value)} 
+            placeholder="e.g., Public Holiday" 
+          />
+          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">
+            Add Closure
+          </button>
+        </form>
+      </div>
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Scheduled Closures</h3>
+        <ul className="space-y-2">
+          {sortedClosures.map(c => (
+            <li key={c.id} className="bg-gray-800 p-3 rounded-lg flex justify-between items-center">
+              <div>
+                <p className="font-semibold">{c.date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                {c.reason && <p className="text-xs text-gray-400">{c.reason}</p>}
+              </div>
+              <button onClick={() => handleDeleteClosure(c.id)} className="p-2 hover:bg-gray-700 rounded-md text-red-400">
+                <Trash2 size={16} />
+              </button>
+            </li>
+          ))}
+          {closures.length === 0 && (
+            <p className="text-gray-500">No closure dates scheduled.</p>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 
 // --- Booking Modal Component (Updated with Clash Prevention) ---
 function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas, closures }) {
