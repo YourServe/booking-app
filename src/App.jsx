@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -85,7 +85,7 @@ const calculateBookingPrice = (booking, activities, addOns) => {
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [view, setView] = useState('timeline'); // 'timeline' or 'settings'
+    const [view, setView] = useState('timeline'); // 'timeline', 'list', or 'settings'
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
     const [userId, setUserId] = useState(null);
@@ -103,6 +103,7 @@ export default function App() {
     const [areas, setAreas] = useState([]);
     const [scheduleOverrides, setScheduleOverrides] = useState([]);
     const [closures, setClosures] = useState([]);
+    const [blocks, setBlocks] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -110,6 +111,10 @@ export default function App() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBooking, setEditingBooking] = useState(null);
     const [modalInitialData, setModalInitialData] = useState({});
+    
+    const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
+    const [editingBlock, setEditingBlock] = useState(null);
+    const [blockInitialData, setBlockInitialData] = useState({});
 
     // --- Firebase Initialization and Auth ---
     useEffect(() => {
@@ -153,7 +158,7 @@ export default function App() {
         if (!isAuthReady || !db) return;
 
         setLoading(true);
-        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures'];
+        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures', 'blocks'];
         let loadedCount = 0;
 
         const unsubscribers = collections.map(collectionName => {
@@ -172,11 +177,18 @@ export default function App() {
                             })),
                             payments: (b.payments || []).map((p, index) => ({
                                 ...p,
-                                id: p.id || Date.now() + index, // Ensure every payment has a unique ID
+                                id: p.id || Date.now() + index, 
                                 date: p.date instanceof Timestamp ? p.date.toDate() : new Date(p.date)
                             }))
                         }));
                         setBookings(parsedBookings); 
+                        break;
+                    case 'blocks':
+                        const parsedBlocks = data.map(b => ({
+                            ...b,
+                            startTime: b.startTime instanceof Timestamp ? b.startTime.toDate() : new Date(b.startTime),
+                        }));
+                        setBlocks(parsedBlocks);
                         break;
                     case 'customers': setCustomers(data); break;
                     case 'addOns': setAddOns(data.sort((a, b) => a.name.localeCompare(b.name))); break;
@@ -211,7 +223,7 @@ export default function App() {
         return () => unsubscribers.forEach(unsub => unsub());
     }, [isAuthReady, db, appId]);
 
-    // --- Event Handlers for Booking Modal ---
+    // --- Event Handlers for Modals ---
     const handleOpenBookingModal = (booking = null, initialTime = null, resourceId = null) => {
         setEditingBooking(booking);
         let initialData = {};
@@ -233,10 +245,26 @@ export default function App() {
         setIsModalOpen(true);
     };
     
-    const handleCloseModal = () => {
+    const handleCloseBookingModal = () => {
         setIsModalOpen(false);
         setEditingBooking(null);
         setModalInitialData({});
+    };
+
+    const handleOpenBlockModal = (block = null, initialTime = null, resourceId = null) => {
+        setEditingBlock(block);
+        let initialData = {};
+        if (initialTime && resourceId) {
+            initialData = { startTime: initialTime, resourceId };
+        }
+        setBlockInitialData(initialData);
+        setIsBlockModalOpen(true);
+    };
+
+    const handleCloseBlockModal = () => {
+        setIsBlockModalOpen(false);
+        setEditingBlock(null);
+        setBlockInitialData({});
     };
 
     const handleDateChange = (offset) => {
@@ -260,7 +288,7 @@ export default function App() {
                     <h1 className="hidden sm:block text-xl font-bold text-white">Venue Booking</h1>
                 </div>
 
-                {view === 'timeline' && (
+                {view !== 'settings' && (
                     <div className="flex-grow flex justify-center items-center relative mx-2">
                         <div className="flex items-center gap-1 sm:gap-2">
                             <button onClick={() => handleDateChange(-1)} className="p-2 rounded-md hover:bg-gray-700"><ChevronLeft size={20}/></button>
@@ -275,10 +303,16 @@ export default function App() {
                 )}
 
                 <nav className="flex items-center gap-2 sm:gap-4">
-                     {view === 'timeline' && (
+                     {view !== 'settings' && (
                          <>
                              <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg items-center gap-1.5 text-sm font-semibold hidden sm:flex">
                                  Today
+                             </button>
+                              <button
+                                 onClick={() => handleOpenBlockModal(null, selectedDate)}
+                                 className="bg-gray-600 hover:bg-gray-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
+                             >
+                                 <Ban size={16} /> <span className="hidden sm:inline">Block</span>
                              </button>
                              <button
                                  onClick={() => handleOpenBookingModal(null, selectedDate)}
@@ -295,6 +329,13 @@ export default function App() {
                             aria-label="Timeline View"
                         >
                             <Calendar size={20} />
+                        </button>
+                         <button
+                            onClick={() => setView('list')}
+                            className={`p-1.5 rounded-md ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
+                            aria-label="List View"
+                        >
+                            <List size={20} />
                         </button>
                         <button
                             onClick={() => setView('settings')}
@@ -320,13 +361,27 @@ export default function App() {
                                 activities={activities}
                                 resources={resources}
                                 bookings={bookings}
+                                blocks={blocks}
                                 addOns={addOns}
                                 resourceLinks={resourceLinks}
                                 areas={areas}
                                 scheduleOverrides={scheduleOverrides}
                                 closures={closures}
                                 onNewBooking={handleOpenBookingModal}
+                                onNewBlock={handleOpenBlockModal}
                                 selectedDate={selectedDate}
+                            />
+                        )}
+                        {view === 'list' && (
+                             <ListView
+                                 db={db}
+                                 appId={appId}
+                                 activities={activities}
+                                 resources={resources}
+                                 bookings={bookings}
+                                 addOns={addOns}
+                                 onEditBooking={handleOpenBookingModal}
+                                 selectedDate={selectedDate}
                             />
                         )}
                         {view === 'settings' && (
@@ -348,7 +403,7 @@ export default function App() {
             {isModalOpen && (
                 <BookingModal
                     isOpen={isModalOpen}
-                    onClose={handleCloseModal}
+                    onClose={handleCloseBookingModal}
                     db={db}
                     appId={appId}
                     booking={editingBooking}
@@ -359,14 +414,349 @@ export default function App() {
                     addOns={addOns}
                     resourceLinks={resourceLinks}
                     bookings={bookings}
+                    blocks={blocks}
                     selectedDate={selectedDate}
                     areas={areas}
                     closures={closures}
                 />
             )}
+             {isBlockModalOpen && (
+                <BlockModal
+                    isOpen={isBlockModalOpen}
+                    onClose={handleCloseBlockModal}
+                    db={db}
+                    appId={appId}
+                    block={editingBlock}
+                    initialData={blockInitialData}
+                    resources={resources}
+                    activities={activities}
+                />
+            )}
         </div>
     );
 }
+
+// --- Block Modal Component (NEW) ---
+function BlockModal({ isOpen, onClose, db, appId, block, initialData, resources, activities }) {
+    const [resourceId, setResourceId] = useState('');
+    const [startTime, setStartTime] = useState(new Date());
+    const [duration, setDuration] = useState(60);
+    const [reason, setReason] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setError(null);
+            if (block) {
+                setResourceId(block.resourceId);
+                setStartTime(block.startTime instanceof Timestamp ? block.startTime.toDate() : new Date(block.startTime));
+                setDuration(block.duration);
+                setReason(block.reason || '');
+            } else {
+                const initialDate = initialData?.startTime || new Date();
+                const initialResourceId = initialData?.resourceId || (resources.length > 0 ? resources[0].id : '');
+                
+                setStartTime(initialDate);
+                setResourceId(initialResourceId);
+                setDuration(60);
+                setReason('');
+            }
+        }
+    }, [block, initialData, isOpen, resources]);
+
+    const handleSave = async () => {
+        if (!resourceId || !startTime || !duration) {
+            setError("Resource, start time, and duration are required.");
+            return;
+        }
+        setIsSaving(true);
+        setError(null);
+
+        const blockData = {
+            resourceId,
+            startTime: Timestamp.fromDate(new Date(startTime)),
+            duration: Number(duration),
+            reason: reason.trim(),
+        };
+
+        try {
+            const collectionRef = collection(db, `artifacts/${appId}/public/data/blocks`);
+            if (block) {
+                const blockRef = doc(collectionRef, block.id);
+                await setDoc(blockRef, blockData);
+            } else {
+                await addDoc(collectionRef, blockData);
+            }
+            onClose();
+        } catch (err) {
+            console.error("Error saving block:", err);
+            setError("Failed to save the block. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!block) return;
+        setIsSaving(true);
+        try {
+            await deleteDoc(doc(db, `artifacts/${appId}/public/data/blocks`, block.id));
+            onClose();
+        } catch (err) {
+            console.error("Error deleting block:", err);
+            setError("Failed to delete the block.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    const handleTimeChange = (e) => {
+        const [hours, minutes] = e.target.value.split(':');
+        const newStartTime = new Date(startTime);
+        newStartTime.setHours(hours, minutes);
+        setStartTime(newStartTime);
+    }
+    
+    const timeForInput = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
+
+    const groupedResources = activities.map(activity => ({
+        ...activity,
+        resources: resources.filter(r => r.activityId === activity.id)
+    })).filter(activity => activity.resources.length > 0);
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                <header className="p-4 border-b border-gray-700 flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">{block ? 'Edit Block' : 'Create Block'}</h2>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700"><X size={20} /></button>
+                </header>
+                <main className="p-6 space-y-4 overflow-y-auto">
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1 block">Resource</label>
+                         <select value={resourceId} onChange={(e) => setResourceId(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+                            <option value="" disabled>Select a resource...</option>
+                            {groupedResources.map(activity => (
+                                <optgroup key={activity.id} label={activity.name}>
+                                    {activity.resources.map(res => (
+                                        <option key={res.id} value={res.id}>{res.name}</option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                         <InputField 
+                            label="Start Time" 
+                            type="time" 
+                            value={timeForInput} 
+                            onChange={handleTimeChange} 
+                            Icon={Clock}
+                            required
+                        />
+                         <InputField 
+                            label="Duration (minutes)" 
+                            type="number" 
+                            value={duration} 
+                            onChange={(e) => setDuration(e.target.value)} 
+                            placeholder="e.g., 60" 
+                            Icon={Clock} 
+                            required
+                        />
+                    </div>
+
+                    <InputField 
+                        label="Reason (optional)" 
+                        value={reason} 
+                        onChange={(e) => setReason(e.target.value)} 
+                        placeholder="e.g., Cleaning, Private Event" 
+                        Icon={FileText} 
+                    />
+                    {error && <p className="text-red-400 text-sm">{error}</p>}
+                </main>
+                <footer className="p-4 border-t border-gray-700 flex justify-between items-center">
+                     <div>
+                        {block && (
+                            <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                                <Trash2 size={16} /> Delete
+                            </button>
+                        )}
+                    </div>
+                    <button onClick={handleSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500">
+                        {isSaving ? 'Saving...' : (block ? 'Update Block' : 'Create Block')}
+                    </button>
+                </footer>
+            </div>
+        </div>
+    );
+}
+
+
+// --- List View Component (NEW) ---
+function ListView({ db, appId, activities, resources, bookings, addOns, onEditBooking, selectedDate }) {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('time'); // 'time', 'customer', 'activity'
+
+    const dailyBookings = useMemo(() => {
+        return bookings.flatMap(booking => 
+            booking.items
+                .filter(item => {
+                    const itemDate = item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime);
+                    return itemDate.toDateString() === selectedDate.toDateString();
+                })
+                .map(item => ({
+                    ...booking,
+                    bookingId: booking.id,
+                    item: item,
+                    startTime: item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime)
+                }))
+        );
+    }, [bookings, selectedDate]);
+
+    const filteredAndSortedBookings = useMemo(() => {
+        let filtered = dailyBookings;
+
+        if (searchTerm) {
+            const lowerSearchTerm = searchTerm.toLowerCase();
+            filtered = filtered.filter(b => 
+                b.customerName.toLowerCase().includes(lowerSearchTerm) ||
+                (activities.find(a => a.id === b.item.activityId)?.name.toLowerCase().includes(lowerSearchTerm))
+            );
+        }
+
+        return filtered.sort((a, b) => {
+            switch (sortBy) {
+                case 'customer':
+                    return a.customerName.localeCompare(b.customerName);
+                case 'activity':
+                    const activityA = activities.find(act => act.id === a.item.activityId)?.name || '';
+                    const activityB = activities.find(act => act.id === b.item.activityId)?.name || '';
+                    return activityA.localeCompare(activityB);
+                case 'time':
+                default:
+                    return a.startTime - b.startTime;
+            }
+        });
+
+    }, [dailyBookings, searchTerm, sortBy, activities]);
+
+     const handleCycleStatus = async (bookingId, currentStatus) => {
+        const currentStatusIndex = BOOKING_STATUSES.indexOf(currentStatus);
+        const nextStatusIndex = (currentStatusIndex + 1) % BOOKING_STATUSES.length;
+        const newStatus = BOOKING_STATUSES[nextStatusIndex];
+
+        const bookingRef = doc(db, `artifacts/${appId}/public/data/bookings`, bookingId);
+        try {
+            await updateDoc(bookingRef, { status: newStatus });
+        } catch (error) {
+            console.error("Error updating status:", error);
+        }
+    };
+
+
+    return (
+        <div className="p-4 sm:p-6 lg:p-8 flex-grow">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                    <h1 className="text-2xl font-bold text-white">Bookings for {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
+                    <div className="w-full sm:w-auto flex gap-2">
+                        <div className="relative flex-grow">
+                            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input 
+                                type="text"
+                                placeholder="Search by name or activity..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                         <div className="relative">
+                            <select
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value)}
+                                className="w-full h-full bg-gray-800 border border-gray-700 rounded-lg py-2 pl-3 pr-8 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                            >
+                                <option value="time">Sort by Time</option>
+                                <option value="customer">Sort by Customer</option>
+                                <option value="activity">Sort by Activity</option>
+                            </select>
+                             <ChevronsUpDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-700/50">
+                            <tr>
+                                <th className="p-4 text-sm font-semibold text-gray-300">Time</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300">Customer</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 hidden md:table-cell">Activity & Resources</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 text-center">Group</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 text-center">Payment</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 text-center">Status</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredAndSortedBookings.length > 0 ? filteredAndSortedBookings.map((b, index) => {
+                                const activity = activities.find(a => a.id === b.item.activityId);
+                                const fullBooking = bookings.find(fb => fb.id === b.bookingId);
+                                
+                                return (
+                                    <tr key={`${b.bookingId}-${b.item.id}-${index}`} className="border-t border-gray-700 hover:bg-gray-700/40">
+                                        <td className="p-4 font-medium">{b.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td className="p-4 font-semibold">{b.customerName}</td>
+                                        <td className="p-4 hidden md:table-cell">
+                                            <p className="font-medium">{activity?.name || 'N/A'}</p>
+                                            <p className="text-xs text-gray-400">
+                                                {b.item.resourceIds.map(rid => resources.find(r => r.id === rid)?.name).join(', ')}
+                                            </p>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex items-center justify-center gap-1.5 bg-gray-700 px-2 py-1 rounded-full w-fit mx-auto">
+                                                <Users size={14}/> <span>{b.groupSize}</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex justify-center">
+                                                 <PaymentStatusIcon booking={fullBooking} activities={activities} addOns={addOns} />
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <button 
+                                                onClick={() => handleCycleStatus(b.bookingId, b.status)}
+                                                className={`text-xs font-bold py-1 px-3 rounded-full border ${BOOKING_STATUS_COLORS[b.status]}`}
+                                            >
+                                                {b.status}
+                                            </button>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <button onClick={() => onEditBooking(fullBooking)} className="p-2 hover:bg-gray-600 rounded-md text-gray-300">
+                                                <Edit size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan="7" className="text-center p-8 text-gray-500">
+                                        No bookings found for this day.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 
 // --- Editable Slot Component ---
 function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBookingItemPosition, availableTimeOptions }) {
@@ -588,7 +978,7 @@ function PaymentStatusIcon({ booking, activities, addOns }) {
 
 
 // --- Timeline View Component (Updated) ---
-function TimelineView({ db, appId, activities, resources, bookings, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, selectedDate }) {
+function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
@@ -643,8 +1033,10 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
         const startMinute = item.startTime.getMinutes();
         const totalStartMinutes = (startHour - 8) * 60 + startMinute;
         
+        const duration = item.duration || (item.endTime.getTime() - item.startTime.getTime()) / 60000;
+        
         const left = `calc(${(totalStartMinutes / 15)} * 4rem)`;
-        const width = `calc(${(item.duration / 15)} * 4rem - 2px)`;
+        const width = `calc(${(duration / 15)} * 4rem - 2px)`;
 
         return { left, width };
     };
@@ -739,6 +1131,14 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
             )
         );
     }, [bookings, selectedDate]);
+    
+    const filteredBlocks = useMemo(() => {
+        return blocks.filter(block => 
+            block.startTime.getFullYear() === selectedDate.getFullYear() &&
+            block.startTime.getMonth() === selectedDate.getMonth() &&
+            block.startTime.getDate() === selectedDate.getDate()
+        );
+    }, [blocks, selectedDate]);
 
     const groupedResources = useMemo(() => activities.map(activity => ({
         ...activity,
@@ -908,11 +1308,20 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
                                             scheduleOverrides={scheduleOverrides}
                                         />
                                     ) : (
-                                        timeSlots.slice(0, -1).map((time, i) => (
+                                        timeSlots.slice(0, -1).map((timeStr, i) => (
                                             <div
                                                 key={i}
                                                 className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
-                                                onClick={() => onNewBooking(null, new Date(selectedDate.setHours(parseInt(time.split(':')[0]), parseInt(time.split(':')[1]), 0, 0)), resource.id)}
+                                                onClick={(e) => {
+                                                    const time = new Date(selectedDate);
+                                                    const [hours, minutes] = timeStr.split(':');
+                                                    time.setHours(hours, minutes, 0, 0);
+                                                    if (e.shiftKey) {
+                                                        onNewBlock(null, time, resource.id);
+                                                    } else {
+                                                        onNewBooking(null, time, resource.id);
+                                                    }
+                                                }}
                                             ></div>
                                         ))
                                     )}
@@ -957,6 +1366,20 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
                                             );
                                         })
                                     )}
+                                    {filteredBlocks.filter(block => block.resourceId === resource.id).map(block => {
+                                        const { left, width } = getBookingItemPosition(block);
+                                        return (
+                                            <div
+                                                key={block.id}
+                                                onClick={() => onNewBlock(block)}
+                                                className="absolute top-1 bottom-1 bg-gray-700/80 rounded-md z-5 p-2 flex items-center cursor-pointer border border-gray-600"
+                                                style={{ left, width }}
+                                            >
+                                                <div className="h-full w-full bg-stripes"></div>
+                                                <p className="text-xs font-semibold text-white truncate absolute left-2 right-2">{block.reason || 'Blocked'}</p>
+                                            </div>
+                                        );
+                                    })}
                                      {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
                                          const { left, width } = getBookingItemPosition(slot);
                                          return (
@@ -1730,7 +2153,7 @@ function ClosureManager({ db, appId, closures }) {
 
 
 // --- Booking Modal Component (Updated with Payments) ---
-function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas, closures }) {
+function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, blocks, selectedDate, areas, closures }) {
     const [customerName, setCustomerName] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ phone: '', email: '' });
     const [groupSize, setGroupSize] = useState(2);
@@ -1775,7 +2198,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                 setSelectedAddOns(booking.selectedAddOns || []);
                 setPayments(booking.payments || []);
             } else {
-                 resetModalState();
+                resetModalState();
             }
         }
     }, [booking, isOpen, customers, resetModalState]);
@@ -2153,7 +2576,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                 <footer className="p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-b-2xl">
                     <div>
                         {booking && (
-                             <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                            <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
                                 <Trash2 size={16} /> Delete
                             </button>
                         )}
@@ -2220,7 +2643,7 @@ function BookingItemForm({ item, onItemChange, onResourceToggle, activities, res
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                 <div className="md:col-span-2">
+               <div className="md:col-span-2">
                     <label className="text-sm font-medium text-gray-400 mb-1 block">Activity</label>
                     <select value={item.activityId} onChange={(e) => onItemChange(item.id, 'activityId', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
                         <option value="" disabled>Select an activity...</option>
@@ -2351,19 +2774,25 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
     const [method, setMethod] = useState('Cash');
     const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
+    const [giftCardCode, setGiftCardCode] = useState('');
+    const [giftCardInfo, setGiftCardInfo] = useState(null);
+    const [giftCardError, setGiftCardError] = useState(null);
+    const [isCheckingGiftCard, setIsCheckingGiftCard] = useState(false);
+
+    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQGjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
 
     const { totalPrice, totalPaid, balance, depositRequired } = useMemo(() => {
-        const price = calculateBookingPrice(booking, activities, addOns);
-        const paid = (booking.payments || []).filter(p => p.status !== 'Refunded').reduce((acc, p) => acc + p.amount, 0);
+        const price = calculateBookingPrice(booking, activities, addOns) || 0;
+        const paid = (booking.payments || []).filter(p => p.status !== 'Refunded').reduce((acc, p) => acc + p.amount, 0) || 0;
         
         let deposit = 0;
         if (booking.items && booking.items.length > 0) {
             const mainActivity = activities.find(a => a.id === booking.items[0].activityId);
             if (mainActivity?.requireDeposit) {
                 if (mainActivity.depositType === 'Percentage') {
-                    deposit = price * (mainActivity.depositValue / 100);
+                    deposit = price * ((mainActivity.depositValue || 0) / 100);
                 } else {
-                    deposit = mainActivity.depositValue;
+                    deposit = mainActivity.depositValue || 0;
                 }
             }
         }
@@ -2401,6 +2830,58 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
         setMethod('Cash');
         setShowPaymentForm(false);
     };
+    
+    const handleApplyGiftCard = async () => {
+        if (!giftCardCode) return;
+        setIsCheckingGiftCard(true);
+        setGiftCardError(null);
+        setGiftCardInfo(null);
+
+        try {
+            // This is a MOCK API call. In a real app, this would be a backend endpoint.
+            const response = await fetch(`https://api.giftup.app/gift-cards/${giftCardCode}`, {
+                headers: { 
+                    'Authorization': `Bearer ${giftUpApiKey}`,
+                    'x-giftup-testmode': 'true'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Gift card not found or invalid.');
+            }
+            const data = await response.json();
+            setGiftCardInfo(data);
+        } catch (error) {
+            setGiftCardError(error.message);
+        } finally {
+            setIsCheckingGiftCard(false);
+        }
+    };
+    
+    const handleRedeemGiftCard = async () => {
+        const currentValue = giftCardInfo.currentValue || 0;
+        const amountToRedeem = Math.min(currentValue, balance);
+        if (amountToRedeem <= 0) return;
+
+        // MOCK API call to redeem
+        console.log(`Redeeming ${amountToRedeem} from gift card ${giftCardInfo.code}`);
+        
+        const newPayment = {
+            id: Date.now(),
+            amount: amountToRedeem,
+            method: `Gift Card (...${giftCardInfo.code.slice(-4)})`,
+            date: new Date(),
+            status: 'Completed',
+            giftCardCode: giftCardInfo.code
+        };
+        onUpdatePayments([...booking.payments, newPayment]);
+        
+        setGiftCardCode('');
+        setGiftCardInfo(null);
+        setGiftCardError(null);
+        setShowPaymentForm(false);
+    };
+
 
     const handleUpdatePayment = (id, updatedAmount, updatedMethod) => {
         const newPayments = booking.payments.map(p => 
@@ -2432,19 +2913,19 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 <div className="bg-gray-800 p-3 rounded-lg">
                     <p className="text-xs text-gray-400">Total Price</p>
-                    <p className="text-lg font-bold">${totalPrice.toFixed(2)}</p>
+                    <p className="text-lg font-bold">${(totalPrice || 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gray-800 p-3 rounded-lg">
                     <p className="text-xs text-gray-400">Deposit Required</p>
-                    <p className="text-lg font-bold text-orange-400">${depositRequired.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-orange-400">${(depositRequired || 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gray-800 p-3 rounded-lg">
                     <p className="text-xs text-gray-400">Total Paid</p>
-                    <p className="text-lg font-bold text-green-400">${totalPaid.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-green-400">${(totalPaid || 0).toFixed(2)}</p>
                 </div>
                 <div className="bg-gray-800 p-3 rounded-lg">
                     <p className="text-xs text-gray-400">Balance Due</p>
-                    <p className="text-lg font-bold text-red-400">${balance.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-red-400">${(balance || 0).toFixed(2)}</p>
                 </div>
             </div>
 
@@ -2475,21 +2956,46 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
 
             {showPaymentForm && (
                 <div className="bg-gray-800 p-4 rounded-lg border border-gray-600 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <InputField label="Amount Paid" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" Icon={DollarSign} />
-                        <div>
-                            <label className="text-sm font-medium text-gray-400 mb-1 block">Payment Method</label>
-                            <select value={method} onChange={e => setMethod(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white">
-                                <option>Cash</option>
-                                <option>POS Card</option>
-                                <option>Invoice</option>
-                            </select>
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1 block">Payment Method</label>
+                        <select value={method} onChange={e => setMethod(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white">
+                            <option>Cash</option>
+                            <option>POS Card</option>
+                            <option>Invoice</option>
+                            <option>Gift Card</option>
+                        </select>
+                    </div>
+
+                    {method !== 'Gift Card' ? (
+                        <>
+                            <InputField label="Amount Paid" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" Icon={DollarSign} />
+                            <div className="flex gap-2 justify-end">
+                                <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                                <button onClick={handleLogPayment} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Log Payment</button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="space-y-3">
+                             <InputField label="Gift Card Code" value={giftCardCode} onChange={e => setGiftCardCode(e.target.value)} placeholder="Enter code..." Icon={Gift} />
+                             <button onClick={handleApplyGiftCard} disabled={isCheckingGiftCard} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">
+                                {isCheckingGiftCard ? 'Checking...' : 'Apply Gift Card'}
+                            </button>
+                            {giftCardError && <p className="text-red-400 text-sm">{giftCardError}</p>}
+                            {giftCardInfo && (
+                                <div className="bg-gray-700 p-3 rounded-lg text-sm">
+                                    <p className="font-bold">Gift Card Found!</p>
+                                    <p>Code: ...{giftCardInfo.code.slice(-4)}</p>
+                                    <p>Current Balance: <span className="font-bold text-green-400">${(giftCardInfo.currentValue || 0).toFixed(2)}</span></p>
+                                    <button onClick={handleRedeemGiftCard} className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
+                                        Redeem ${Math.min(giftCardInfo.currentValue || 0, balance).toFixed(2)}
+                                    </button>
+                                </div>
+                            )}
+                             <div className="flex gap-2 justify-end">
+                                <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                        <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
-                        <button onClick={handleLogPayment} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Log Payment</button>
-                    </div>
+                    )}
                 </div>
             )}
         </div>
@@ -2512,6 +3018,7 @@ function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, editi
                     <option>Cash</option>
                     <option>POS Card</option>
                     <option>Invoice</option>
+                    <option>Gift Card</option>
                 </select>
                 <div className="flex items-center gap-1">
                     <button onClick={handleSave} className="p-1.5 hover:bg-gray-700 rounded-md text-green-400"><Check size={16} /></button>
