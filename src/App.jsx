@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -18,6 +18,7 @@ const firebaseConfig = {
     appId: "1:279115505018:web:204a8be5d1c11934628ac3",
     measurementId: "G-F69VTE72T1"
 };
+
 
 // --- Helper Functions & Constants ---
 const timeSlots = Array.from({ length: 15 * 4 + 1 }, (_, i) => {
@@ -48,6 +49,36 @@ const ADD_ON_ICONS = {
 const AddOnIcon = ({ name, ...props }) => {
     const Icon = ADD_ON_ICONS[name] || ShoppingCart;
     return <Icon {...props} />;
+};
+
+const calculateBookingPrice = (booking, activities, addOns) => {
+    if (!booking) return 0;
+    const { groupSize = 0, items = [], selectedAddOns = [] } = booking;
+    const numGroupSize = Number(groupSize) || 0;
+    if (numGroupSize < 1) return 0;
+
+    const activitiesTotal = items.reduce((acc, item) => {
+        const activity = activities.find(a => a.id === item.activityId);
+        if (!activity) return acc;
+
+        let itemPrice = 0;
+        if (activity.type === 'Fixed Time') {
+            itemPrice = activity.price;
+        } else { // Flexi Time
+            const pricePerSlot = activity.price;
+            const slots = item.duration / 15;
+            itemPrice = pricePerSlot * slots;
+        }
+        return acc + itemPrice;
+    }, 0);
+
+    const addOnsTotal = selectedAddOns.reduce((acc, selected) => {
+        const addOn = addOns.find(a => a.id === selected.addOnId);
+        if (!addOn) return acc;
+        return acc + (addOn.price * selected.quantity);
+    }, 0);
+
+    return (activitiesTotal * numGroupSize) + addOnsTotal;
 };
 
 
@@ -138,6 +169,11 @@ export default function App() {
                             items: (b.items || []).map(item => ({
                                 ...item,
                                 startTime: item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime)
+                            })),
+                            payments: (b.payments || []).map((p, index) => ({
+                                ...p,
+                                id: p.id || Date.now() + index, // Ensure every payment has a unique ID
+                                date: p.date instanceof Timestamp ? p.date.toDate() : new Date(p.date)
                             }))
                         }));
                         setBookings(parsedBookings); 
@@ -240,18 +276,18 @@ export default function App() {
 
                 <nav className="flex items-center gap-2 sm:gap-4">
                      {view === 'timeline' && (
-                        <>
-                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg items-center gap-1.5 text-sm font-semibold hidden sm:flex">
-                                Today
-                            </button>
-                            <button
-                                onClick={() => handleOpenBookingModal(null, selectedDate)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
-                            >
-                                <Plus size={16} /> <span className="hidden sm:inline">New</span>
-                            </button>
-                        </>
-                    )}
+                         <>
+                             <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg items-center gap-1.5 text-sm font-semibold hidden sm:flex">
+                                 Today
+                             </button>
+                             <button
+                                 onClick={() => handleOpenBookingModal(null, selectedDate)}
+                                 className="bg-blue-600 hover:bg-blue-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
+                             >
+                                 <Plus size={16} /> <span className="hidden sm:inline">New</span>
+                             </button>
+                         </>
+                     )}
                     <div className="flex items-center gap-2 p-1 bg-gray-800 rounded-lg">
                         <button
                             onClick={() => setView('timeline')}
@@ -332,7 +368,7 @@ export default function App() {
     );
 }
 
-// --- Editable Slot Component (Updated) ---
+// --- Editable Slot Component ---
 function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBookingItemPosition, availableTimeOptions }) {
     const [isEditing, setIsEditing] = useState(false);
     const [newTime, setNewTime] = useState(slot.startTime.toTimeString().substring(0, 5));
@@ -408,7 +444,7 @@ function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBooki
 }
 
 
-// --- Fixed Time Slot Component (Updated) ---
+// --- Fixed Time Slot Component ---
 function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking, getBookingItemPosition, filteredBookings, unavailableSlots, onUpdateTimeSlot, scheduleOverrides }) {
     const slots = useMemo(() => {
         const dayOfWeek = DAYS_OF_WEEK[selectedDate.getDay()];
@@ -501,6 +537,55 @@ function FixedTimeSlots({ resource, activity, areas, selectedDate, onNewBooking,
         </>
     );
 }
+
+// --- Payment Status Icon (Updated) ---
+function PaymentStatusIcon({ booking, activities, addOns }) {
+    const [status, setStatus] = useState('unpaid'); // unpaid, partial, paid
+    const [tooltipVisible, setTooltipVisible] = useState(false);
+
+    const { totalPrice, totalPaid, balance } = useMemo(() => {
+        const price = calculateBookingPrice(booking, activities, addOns);
+        const paid = (booking.payments || []).filter(p => p.status !== 'Refunded').reduce((acc, p) => acc + p.amount, 0);
+        return { totalPrice: price, totalPaid: paid, balance: price - paid };
+    }, [booking, activities, addOns]);
+
+    useEffect(() => {
+        if (totalPrice > 0) {
+            if (totalPaid >= totalPrice) {
+                setStatus('paid');
+            } else if (totalPaid > 0) {
+                setStatus('partial');
+            } else {
+                setStatus('unpaid');
+            }
+        } else {
+            setStatus('paid'); // If total is 0, consider it paid
+        }
+    }, [totalPrice, totalPaid]);
+
+    const colorClasses = {
+        unpaid: 'bg-red-500 text-white',
+        partial: 'bg-orange-500 text-white',
+        paid: 'bg-green-500 text-white',
+    };
+
+    return (
+        <div className="relative" onMouseEnter={() => setTooltipVisible(true)} onMouseLeave={() => setTooltipVisible(false)}>
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${colorClasses[status]}`}>
+                <DollarSign size={12} />
+            </div>
+            {tooltipVisible && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-2 text-xs text-white z-20">
+                    <p className="font-bold mb-1">Payment Status</p>
+                    <div className="flex justify-between"><span>Total:</span><span>${totalPrice.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>Paid:</span><span>${totalPaid.toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold border-t border-gray-600 mt-1 pt-1"><span>Balance:</span><span>${balance.toFixed(2)}</span></div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 // --- Timeline View Component (Updated) ---
 function TimelineView({ db, appId, activities, resources, bookings, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, selectedDate }) {
@@ -848,10 +933,15 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
                                                         <>
                                                             <p className="font-bold text-xs truncate text-white flex-grow mr-2">{booking.customerName || 'Walk-In'}</p>
                                                             <div className="flex items-center gap-2 flex-shrink-0">
+                                                                <PaymentStatusIcon booking={booking} activities={activities} addOns={addOns} />
                                                                 {booking.notes && <FileText size={12} className="text-gray-200" title={booking.notes} />}
                                                                 {booking.selectedAddOns && booking.selectedAddOns.map(sa => {
                                                                     const addOn = addOns.find(a => a.id === sa.addOnId);
-                                                                    return addOn ? <AddOnIcon key={addOn.id} name={addOn.iconName} size={12} className="text-gray-200" title={`${addOn.name} (x${sa.quantity})`} /> : null;
+                                                                    return addOn ? (
+                                                                        <div key={addOn.id} className="bg-black/25 p-0.5 rounded-sm flex items-center justify-center">
+                                                                             <AddOnIcon name={addOn.iconName} size={12} className="text-gray-200" title={`${addOn.name} (x${sa.quantity})`} />
+                                                                        </div>
+                                                                    ) : null;
                                                                 })}
                                                                 <div className="flex items-center gap-1 text-xs text-gray-200 bg-black/20 px-1.5 py-0.5 rounded-md">
                                                                     <Users size={12} />
@@ -933,19 +1023,30 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
     );
 }
 
-// --- Activity Manager Component ---
+// --- Activity Manager Component (Updated for Deposits) ---
 function ActivityManager({ db, appId, activities, areas }) {
     const [name, setName] = useState('');
     const [type, setType] = useState('Fixed Time');
     const [price, setPrice] = useState('');
     const [areaId, setAreaId] = useState('');
     const [editingId, setEditingId] = useState(null);
+    const [requireDeposit, setRequireDeposit] = useState(false);
+    const [depositType, setDepositType] = useState('Percentage'); // 'Percentage' or 'Fixed'
+    const [depositValue, setDepositValue] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!name || !price || !areaId) return;
         const collectionRef = collection(db, `artifacts/${appId}/public/data/activities`);
-        const data = { name, type, price: Number(price), areaId };
+        const data = { 
+            name, 
+            type, 
+            price: Number(price), 
+            areaId,
+            requireDeposit,
+            depositType: requireDeposit ? depositType : null,
+            depositValue: requireDeposit ? Number(depositValue) : null,
+        };
 
         if (editingId) {
             await setDoc(doc(collectionRef, editingId), data);
@@ -961,6 +1062,9 @@ function ActivityManager({ db, appId, activities, areas }) {
         setType(activity.type);
         setPrice(activity.price);
         setAreaId(activity.areaId || '');
+        setRequireDeposit(activity.requireDeposit || false);
+        setDepositType(activity.depositType || 'Percentage');
+        setDepositValue(activity.depositValue || '');
     };
 
     const handleDelete = async (id) => {
@@ -973,6 +1077,9 @@ function ActivityManager({ db, appId, activities, areas }) {
         setPrice('');
         setAreaId('');
         setEditingId(null);
+        setRequireDeposit(false);
+        setDepositType('Percentage');
+        setDepositValue('');
     };
 
     return (
@@ -981,7 +1088,7 @@ function ActivityManager({ db, appId, activities, areas }) {
                 <h3 className="text-xl font-semibold mb-4">{editingId ? 'Edit Activity' : 'Add New Activity'}</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <InputField label="Activity Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Bowling" Icon={Tag} required={true} />
-                     <div>
+                    <div>
                         <label className="text-sm font-medium text-gray-400 mb-1 block">Area</label>
                         <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
                             <option value="" disabled>Select an area</option>
@@ -996,6 +1103,23 @@ function ActivityManager({ db, appId, activities, areas }) {
                         </select>
                     </div>
                     <InputField label={type === 'Fixed Time' ? 'Price per Person' : 'Price per Person (per 15 min)'} type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g., 25" Icon={DollarSign} required={true}/>
+                    
+                    <div className="bg-gray-800 p-4 rounded-lg space-y-4 border border-gray-700">
+                        <InputField label="Require Deposit at Booking" type="checkbox" checked={requireDeposit} onChange={(e) => setRequireDeposit(e.target.checked)} />
+                        {requireDeposit && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm font-medium text-gray-400 mb-1 block">Deposit Type</label>
+                                    <select value={depositType} onChange={(e) => setDepositType(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white">
+                                        <option value="Percentage">Percentage (%)</option>
+                                        <option value="Fixed">Fixed Amount ($)</option>
+                                    </select>
+                                </div>
+                                <InputField label="Deposit Value" type="number" value={depositValue} onChange={(e) => setDepositValue(e.target.value)} placeholder={depositType === 'Percentage' ? 'e.g., 50' : 'e.g., 100'} required={true} />
+                            </div>
+                        )}
+                    </div>
+                    
                     <div className="flex gap-2">
                         <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">{editingId ? 'Update' : 'Save'}</button>
                         {editingId && <button type="button" onClick={resetForm} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full">Cancel</button>}
@@ -1010,6 +1134,7 @@ function ActivityManager({ db, appId, activities, areas }) {
                             <div>
                                 <p className="font-semibold">{act.name}</p>
                                 <p className="text-xs text-gray-400">{act.type} - ${act.price}{act.type === 'Flexi Time' ? '/person/15min' : '/person'}</p>
+                                {act.requireDeposit && <p className="text-xs text-blue-400">Deposit: {act.depositType === 'Percentage' ? `${act.depositValue}%` : `$${act.depositValue}`}</p>}
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={() => handleEdit(act)} className="p-2 hover:bg-gray-700 rounded-md"><Settings size={16} /></button>
@@ -1281,7 +1406,7 @@ function ResourceLinkManager({ db, appId, resources, activities, resourceLinks }
     );
 }
 
-// --- Area Manager Component (Updated with Bug Fix) ---
+// --- Area Manager Component ---
 function AreaManager({ db, appId, areas }) {
     const defaultSchedule = DAYS_OF_WEEK.map(day => ({ 
         day, 
@@ -1515,7 +1640,7 @@ function AreaManager({ db, appId, areas }) {
     );
 }
 
-// --- Closure Manager Component (New) ---
+// --- Closure Manager Component ---
 function ClosureManager({ db, appId, closures }) {
   const [newDate, setNewDate] = useState('');
   const [reason, setReason] = useState('');
@@ -1591,7 +1716,7 @@ function ClosureManager({ db, appId, closures }) {
 }
 
 
-// --- Booking Modal Component (Updated with Clash Prevention) ---
+// --- Booking Modal Component (Updated with Payments) ---
 function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, selectedDate, areas, closures }) {
     const [customerName, setCustomerName] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ phone: '', email: '' });
@@ -1599,7 +1724,8 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
     const [bookingItems, setBookingItems] = useState([]);
     const [notes, setNotes] = useState('');
     const [selectedAddOns, setSelectedAddOns] = useState([]);
-    const [modalError, setModalError] = useState(null); // New state for modal-specific errors
+    const [payments, setPayments] = useState([]);
+    const [modalError, setModalError] = useState(null);
 
     const [customerSearch, setCustomerSearch] = useState('');
     const [customerSuggestions, setCustomerSuggestions] = useState([]);
@@ -1615,6 +1741,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
         setBookingItems(initialData.items || [{ id: Date.now(), activityId: '', resourceIds: [], startTime: defaultStartTime, duration: 60 }]);
         setNotes('');
         setSelectedAddOns([]);
+        setPayments([]);
         setCustomerSearch('');
         setCustomerSuggestions([]);
         setSelectedCustomerId(null);
@@ -1633,6 +1760,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                 setBookingItems(booking.items.map(item => ({...item, id: item.id || Date.now() + Math.random()})));
                 setNotes(booking.notes || '');
                 setSelectedAddOns(booking.selectedAddOns || []);
+                setPayments(booking.payments || []);
             } else {
                  resetModalState();
             }
@@ -1720,34 +1848,6 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
         setSelectedAddOns(prev => prev.map(a => a.addOnId === addOnId ? {...a, quantity: Number(quantity)} : a));
     };
 
-    const calculatePrice = useCallback(() => {
-        const numGroupSize = Number(groupSize) || 0;
-        if (numGroupSize < 1) return 0;
-
-        const activitiesTotal = bookingItems.reduce((acc, item) => {
-            const activity = activities.find(a => a.id === item.activityId);
-            if (!activity) return acc;
-
-            let itemPrice = 0;
-            if (activity.type === 'Fixed Time') {
-                itemPrice = activity.price;
-            } else { // Flexi Time
-                const pricePerSlot = activity.price;
-                const slots = item.duration / 15;
-                itemPrice = pricePerSlot * slots;
-            }
-            return acc + itemPrice;
-        }, 0);
-
-        const addOnsTotal = selectedAddOns.reduce((acc, selected) => {
-            const addOn = addOns.find(a => a.id === selected.addOnId);
-            if (!addOn) return acc;
-            return acc + (addOn.price * selected.quantity);
-        }, 0);
-
-        return (activitiesTotal * numGroupSize) + addOnsTotal;
-    }, [bookingItems, activities, groupSize, selectedAddOns, addOns]);
-
     const handleSave = async () => {
         setModalError(null);
         if (bookingItems.some(item => !item.activityId || item.resourceIds.length === 0)) {
@@ -1755,7 +1855,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             return;
         }
         
-        // --- NEW, MORE ACCURATE CONFLICT VALIDATION ---
+        // --- CONFLICT VALIDATION ---
         const allOtherBookings = booking ? bookings.filter(b => b.id !== booking.id) : bookings;
 
         for (const itemToSave of bookingItems) {
@@ -1878,10 +1978,10 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             customerId,
             groupSize: Number(groupSize),
             status: booking ? booking.status : 'Booked',
-            totalPrice: calculatePrice(),
             items: finalBookingItems,
             notes: notes.trim(),
             selectedAddOns: selectedAddOns,
+            payments: payments.map(p => ({...p, date: Timestamp.fromDate(p.date)})),
         };
 
         try {
@@ -1916,7 +2016,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <header className="p-4 border-b border-gray-700 flex justify-between items-center">
                     <h2 className="text-xl font-bold text-white">{booking ? 'Edit Booking' : 'New Booking'}</h2>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700"><X size={20} /></button>
@@ -2027,6 +2127,14 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                             className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-20 resize-none"
                         />
                     </div>
+
+                    <PaymentSection 
+                        booking={{groupSize, items: bookingItems, selectedAddOns, payments}}
+                        activities={activities}
+                        addOns={addOns}
+                        onUpdatePayments={setPayments}
+                    />
+
                 </main>
 
                 <footer className="p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-b-2xl">
@@ -2044,19 +2152,9 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                                 <span>{modalError}</span>
                             </div>
                         )}
-                        <div className="flex items-center gap-4">
-                            <PriceBreakdown 
-                                bookingItems={bookingItems}
-                                selectedAddOns={selectedAddOns}
-                                groupSize={groupSize}
-                                activities={activities}
-                                addOns={addOns}
-                                totalPrice={calculatePrice()}
-                            />
-                            <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
-                                {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
-                            </button>
-                        </div>
+                        <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                            {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
+                        </button>
                     </div>
                 </footer>
             </div>
@@ -2235,57 +2333,220 @@ function CalendarPopup({ selectedDate, setSelectedDate, onClose }) {
     );
 }
 
-function PriceBreakdown({ bookingItems, selectedAddOns, groupSize, activities, addOns, totalPrice }) {
-    const numGroupSize = Number(groupSize) || 0;
+function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
+    const [amount, setAmount] = useState('');
+    const [method, setMethod] = useState('Cash');
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [editingPaymentId, setEditingPaymentId] = useState(null);
 
-    const activityCosts = bookingItems.map(item => {
-        const activity = activities.find(a => a.id === item.activityId);
-        if (!activity) return null;
-        let price = 0;
-        if (activity.type === 'Fixed Time') {
-            price = activity.price;
-        } else {
-            price = (activity.price / 15) * item.duration;
+    const { totalPrice, totalPaid, balance, depositRequired } = useMemo(() => {
+        const price = calculateBookingPrice(booking, activities, addOns);
+        const paid = (booking.payments || []).filter(p => p.status !== 'Refunded').reduce((acc, p) => acc + p.amount, 0);
+        
+        let deposit = 0;
+        if (booking.items && booking.items.length > 0) {
+            const mainActivity = activities.find(a => a.id === booking.items[0].activityId);
+            if (mainActivity?.requireDeposit) {
+                if (mainActivity.depositType === 'Percentage') {
+                    deposit = price * (mainActivity.depositValue / 100);
+                } else {
+                    deposit = mainActivity.depositValue;
+                }
+            }
         }
-        return { name: activity.name, total: price * numGroupSize };
-    }).filter(Boolean);
+        
+        return { 
+            totalPrice: price, 
+            totalPaid: paid, 
+            balance: price - paid,
+            depositRequired: deposit
+        };
+    }, [booking, activities, addOns]);
 
-    const addOnCosts = selectedAddOns.map(selected => {
-        const addOn = addOns.find(a => a.id === selected.addOnId);
-        if (!addOn) return null;
-        return { name: addOn.name, total: addOn.price * selected.quantity };
-    }).filter(Boolean);
+    const handleLogPayment = () => {
+        const paidAmount = parseFloat(amount);
+        if (isNaN(paidAmount) || paidAmount <= 0) {
+            console.error("Invalid payment amount");
+            return;
+        }
+
+        const newPayment = {
+            id: Date.now(),
+            amount: paidAmount,
+            method: method,
+            date: new Date(),
+            status: 'Completed'
+        };
+
+        onUpdatePayments([...booking.payments, newPayment]);
+
+        if (method === 'Invoice') {
+            console.log(`Invoice for $${paidAmount.toFixed(2)} should be generated and emailed.`);
+        }
+        
+        setAmount('');
+        setMethod('Cash');
+        setShowPaymentForm(false);
+    };
+
+    const handleUpdatePayment = (id, updatedAmount, updatedMethod) => {
+        const newPayments = booking.payments.map(p => 
+            p.id === id ? { ...p, amount: parseFloat(updatedAmount), method: updatedMethod } : p
+        );
+        onUpdatePayments(newPayments);
+        setEditingPaymentId(null);
+    };
+
+    const handleToggleRefund = (id) => {
+        const newPayments = booking.payments.map(p => {
+            if (p.id === id) {
+                return { ...p, status: p.status === 'Refunded' ? 'Completed' : 'Refunded' };
+            }
+            return p;
+        });
+        onUpdatePayments(newPayments);
+    };
+
+    const handleDeletePayment = (id) => {
+        const updatedPayments = booking.payments.filter(p => p.id !== id);
+        onUpdatePayments(updatedPayments);
+    };
+
 
     return (
-        <div className="relative group">
-            <span className="text-lg font-bold">Total: ${totalPrice}</span>
-            <div className="absolute bottom-full right-0 mb-2 w-72 bg-gray-700 border border-gray-600 rounded-lg shadow-lg p-3 text-sm text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto z-10">
-                <div className="font-bold mb-2">Price Breakdown</div>
-                <div className="space-y-1">
-                    {activityCosts.map((item, i) => (
-                        <div key={`act-${i}`} className="flex justify-between">
-                            <span>{item.name} (x{numGroupSize})</span>
-                            <span>${item.total}</span>
-                        </div>
-                    ))}
-                    {addOnCosts.map((item, i) => (
-                         <div key={`add-${i}`} className="flex justify-between">
-                            <span>{item.name}</span>
-                            <span>${item.total}</span>
-                        </div>
-                    ))}
+        <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-4">
+            <h3 className="text-lg font-semibold mb-2">Payments</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div className="bg-gray-800 p-3 rounded-lg">
+                    <p className="text-xs text-gray-400">Total Price</p>
+                    <p className="text-lg font-bold">${totalPrice.toFixed(2)}</p>
                 </div>
-                <div className="border-t border-gray-500 mt-2 pt-2 flex justify-between font-bold">
-                    <span>Total</span>
-                    <span>${totalPrice}</span>
+                <div className="bg-gray-800 p-3 rounded-lg">
+                    <p className="text-xs text-gray-400">Deposit Required</p>
+                    <p className="text-lg font-bold text-orange-400">${depositRequired.toFixed(2)}</p>
+                </div>
+                <div className="bg-gray-800 p-3 rounded-lg">
+                    <p className="text-xs text-gray-400">Total Paid</p>
+                    <p className="text-lg font-bold text-green-400">${totalPaid.toFixed(2)}</p>
+                </div>
+                <div className="bg-gray-800 p-3 rounded-lg">
+                    <p className="text-xs text-gray-400">Balance Due</p>
+                    <p className="text-lg font-bold text-red-400">${balance.toFixed(2)}</p>
                 </div>
             </div>
+
+            {booking.payments.length > 0 && (
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-300 mb-2">Payment History</h4>
+                    <ul className="space-y-1 text-sm text-gray-400">
+                        {booking.payments.map((p) => (
+                            <PaymentHistoryItem 
+                                key={p.id} 
+                                payment={p}
+                                onUpdate={handleUpdatePayment}
+                                onToggleRefund={handleToggleRefund}
+                                onDelete={handleDeletePayment}
+                                editing={editingPaymentId === p.id}
+                                onSetEditing={setEditingPaymentId}
+                            />
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {!showPaymentForm && (
+                <button onClick={() => setShowPaymentForm(true)} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-semibold">
+                    <Plus size={16} /> Log a Payment
+                </button>
+            )}
+
+            {showPaymentForm && (
+                <div className="bg-gray-800 p-4 rounded-lg border border-gray-600 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <InputField label="Amount Paid" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" Icon={DollarSign} />
+                        <div>
+                            <label className="text-sm font-medium text-gray-400 mb-1 block">Payment Method</label>
+                            <select value={method} onChange={e => setMethod(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white">
+                                <option>Cash</option>
+                                <option>POS Card</option>
+                                <option>Invoice</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                        <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                        <button onClick={handleLogPayment} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Log Payment</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
-// --- Reusable Input Field Component ---
-function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength, className = '' }) {
+function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, editing, onSetEditing }) {
+    const [editAmount, setEditAmount] = useState(payment.amount);
+    const [editMethod, setEditMethod] = useState(payment.method);
+
+    const handleSave = () => {
+        onUpdate(payment.id, editAmount, editMethod);
+    };
+
+    if (editing) {
+        return (
+             <li className="flex justify-between items-center bg-gray-800 p-2 rounded-md gap-2">
+                <input type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-24 bg-gray-700 border border-gray-600 rounded-lg p-1 text-center"/>
+                <select value={editMethod} onChange={e => setEditMethod(e.target.value)} className="flex-grow bg-gray-700 border border-gray-600 rounded-lg p-1">
+                    <option>Cash</option>
+                    <option>POS Card</option>
+                    <option>Invoice</option>
+                </select>
+                <div className="flex items-center gap-1">
+                    <button onClick={handleSave} className="p-1.5 hover:bg-gray-700 rounded-md text-green-400"><Check size={16} /></button>
+                    <button onClick={() => onSetEditing(null)} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400"><X size={16} /></button>
+                </div>
+            </li>
+        )
+    }
+
+    return (
+        <li className={`flex justify-between items-center bg-gray-800/50 p-2 rounded-md ${payment.status === 'Refunded' ? 'opacity-50' : ''}`}>
+            <div>
+                <span className={payment.status === 'Refunded' ? 'line-through' : ''}>
+                    {payment.method} payment on {payment.date.toLocaleDateString()}
+                </span>
+                {payment.status === 'Refunded' && <span className="text-xs text-red-400 ml-2">(Refunded)</span>}
+            </div>
+            <div className="flex items-center gap-1">
+                <span className={`font-semibold text-gray-200 ${payment.status === 'Refunded' ? 'line-through' : ''}`}>${payment.amount.toFixed(2)}</span>
+                <button onClick={() => onSetEditing(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400" title="Edit Payment"><Edit size={14} /></button>
+                <button onClick={() => onToggleRefund(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-orange-400" title={payment.status === 'Refunded' ? 'Mark as Not Refunded' : 'Mark as Refunded'}>
+                    <RotateCcw size={14} />
+                </button>
+                <button onClick={() => onDelete(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-red-400" title="Delete Payment">
+                    <Trash2 size={14} />
+                </button>
+            </div>
+        </li>
+    );
+}
+
+// --- Reusable Input Field Component (Updated for Checkbox) ---
+function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength, className = '', checked }) {
+    if (type === 'checkbox') {
+        return (
+            <div className={`flex items-center gap-2 ${className}`}>
+                <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={onChange}
+                    id={label}
+                    className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600"
+                />
+                {label && <label htmlFor={label} className="text-sm font-medium text-gray-300">{label}</label>}
+            </div>
+        );
+    }
+    
     return (
         <div className={className}>
             {label && <label className="text-sm font-medium text-gray-400 mb-1 block">{label}</label>}
@@ -2299,7 +2560,7 @@ function InputField({ label, type = 'text', value, onChange, placeholder, Icon, 
                     className={`w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${Icon ? 'pl-10' : 'pl-3'}`}
                     required={required}
                     maxLength={maxLength}
-                    step={type === 'time' ? 900 : undefined}
+                    step={type === 'time' ? 900 : (type === 'number' ? 'any' : undefined)}
                 />
             </div>
         </div>
