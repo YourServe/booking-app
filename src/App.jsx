@@ -981,43 +981,56 @@ function TimelineView({ db, appId, activities, resources, bookings, addOns, reso
 }
 
 
-// --- Settings View Component ---
+// --- Settings View Component (Updated Layout) ---
 function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures }) {
     const [currentTab, setCurrentTab] = useState('activities');
 
+    const tabs = [
+        { id: 'activities', label: 'Activities', icon: Tag },
+        { id: 'resources', label: 'Resources', icon: GripVertical },
+        { id: 'addOns', label: 'Add-Ons', icon: ShoppingCart },
+        { id: 'linking', label: 'Linking', icon: Link2 },
+        { id: 'schedule', label: 'Schedule', icon: Clock },
+        { id: 'closures', label: 'Closures', icon: Ban },
+    ];
+
     return (
-        <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold text-white">Settings</h1>
-                <p className="text-gray-400 mt-1">Manage activities and resources for your venue.</p>
-            </div>
-            <div className="flex border-b border-gray-700 mb-6 flex-wrap">
-                <button onClick={() => setCurrentTab('activities')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'activities' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Activities
-                </button>
-                <button onClick={() => setCurrentTab('resources')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'resources' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Resources
-                </button>
-                 <button onClick={() => setCurrentTab('addOns')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'addOns' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Add-Ons
-                </button>
-                <button onClick={() => setCurrentTab('linking')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'linking' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Linking
-                </button>
-                <button onClick={() => setCurrentTab('schedule')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'schedule' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Schedule
-                </button>
-                 <button onClick={() => setCurrentTab('closures')} className={`px-4 py-2 text-sm font-medium ${currentTab === 'closures' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-white'}`}>
-                    Closures
-                </button>
-            </div>
-            <div>
-                {currentTab === 'activities' && <ActivityManager db={db} appId={appId} activities={activities} areas={areas} />}
-                {currentTab === 'resources' && <ResourceManager db={db} appId={appId} resources={resources} activities={activities} />}
-                {currentTab === 'addOns' && <AddOnManager db={db} appId={appId} addOns={addOns} />}
-                {currentTab === 'linking' && <ResourceLinkManager db={db} appId={appId} resources={resources} activities={activities} resourceLinks={resourceLinks} />}
-                {currentTab === 'schedule' && <AreaManager db={db} appId={appId} areas={areas} />}
-                {currentTab === 'closures' && <ClosureManager db={db} appId={appId} closures={closures} />}
+        <div className="flex-grow p-4 sm:p-6 lg:p-8">
+            <div className="max-w-7xl mx-auto">
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-white">Settings</h1>
+                    <p className="text-gray-400 mt-1">Manage activities, resources, and schedules for your venue.</p>
+                </div>
+
+                 {/* Navigation Buttons */}
+                <nav className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-start gap-2 mb-8">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setCurrentTab(tab.id)}
+                            className={`flex items-center justify-center sm:justify-start gap-3 px-4 py-3 rounded-lg text-left text-sm font-medium transition-colors ${
+                                currentTab === tab.id
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-300 bg-gray-800/50 hover:bg-gray-700/50 hover:text-white'
+                            }`}
+                        >
+                            <tab.icon size={18} />
+                            <span>{tab.label}</span>
+                        </button>
+                    ))}
+                </nav>
+
+                {/* Content Panel */}
+                <main>
+                    <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-6 min-h-[60vh]">
+                        {currentTab === 'activities' && <ActivityManager db={db} appId={appId} activities={activities} areas={areas} />}
+                        {currentTab === 'resources' && <ResourceManager db={db} appId={appId} resources={resources} activities={activities} />}
+                        {currentTab === 'addOns' && <AddOnManager db={db} appId={appId} addOns={addOns} />}
+                        {currentTab === 'linking' && <ResourceLinkManager db={db} appId={appId} resources={resources} activities={activities} resourceLinks={resourceLinks} />}
+                        {currentTab === 'schedule' && <AreaManager db={db} appId={appId} areas={areas} />}
+                        {currentTab === 'closures' && <ClosureManager db={db} appId={appId} closures={closures} />}
+                    </div>
+                </main>
             </div>
         </div>
     );
