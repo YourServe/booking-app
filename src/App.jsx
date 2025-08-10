@@ -1439,7 +1439,8 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                 filteredBookings.forEach(booking => {
                     booking.items.forEach(item => {
                         const activity = activities.find(a => a.id === item.activityId);
-                        if (activity && activity.areaId === area.id) {
+                        // AMENDMENT: Only apply staffing rules to 'Fixed Time' activities
+                        if (activity && activity.type === 'Fixed Time' && activity.areaId === area.id) {
                             const itemEnd = new Date(item.startTime.getTime() + item.duration * 60 * 1000);
                             if (item.startTime < interval.end && itemEnd > interval.start) {
                                 item.resourceIds.forEach(resId => {
@@ -1457,9 +1458,10 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                 
                 if (staffUsed >= staffAvailable) {
                     const allLinkedResourcesInArea = resourceLinks.flatMap(link => link.resourceIds);
+                    // AMENDMENT: Only block other 'Fixed Time' resources
                     const unbookedLinkedResources = resources.filter(r => {
                         const activity = activities.find(a => a.id === r.activityId);
-                        return activity && activity.areaId === area.id && allLinkedResourcesInArea.includes(r.id);
+                        return activity && activity.type === 'Fixed Time' && activity.areaId === area.id && allLinkedResourcesInArea.includes(r.id);
                     });
 
                     unbookedLinkedResources.forEach(resource => {
@@ -1672,7 +1674,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                             {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
                                                 const { left, width } = getBookingItemPosition(slot);
                                                 return (
-                                                    <div key={slot.id} className="absolute top-1 bottom-1 bg-red-500/50 rounded-md z-5" style={{ left, width }}>
+                                                    <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-500/20 rounded-md z-5 pattern-diagonal-lines-sm text-gray-600" style={{ left, width }}>
                                                     </div>
                                                 )
                                             })}
@@ -2790,7 +2792,8 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             allOtherBookings.forEach(b => {
                 b.items.forEach(i => {
                     const iActivity = activities.find(a => a.id === i.activityId);
-                    if (iActivity?.areaId !== area.id) return;
+                    // AMENDMENT: Only count staff usage for 'Fixed Time' activities
+                    if (!iActivity || iActivity.areaId !== area.id || iActivity.type !== 'Fixed Time') return;
 
                     const iStart = i.startTime;
                     const iEnd = new Date(iStart.getTime() + i.duration * 60 * 1000);
@@ -2807,12 +2810,18 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             });
 
             const newStaffUnits = new Set();
-            itemToSave.resourceIds.forEach(resId => {
-                const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
-                if (linkGroup) {
-                    newStaffUnits.add(linkGroup.id);
-                }
-            });
+            // AMENDMENT: Only apply staff rules if the item being saved is 'Fixed Time'
+            if (activity.type === 'Fixed Time') {
+                itemToSave.resourceIds.forEach(resId => {
+                    const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
+                    if (linkGroup) {
+                        // Don't count a group if it's already active
+                        if (!activeStaffUnits.has(linkGroup.id)) {
+                             newStaffUnits.add(linkGroup.id);
+                        }
+                    }
+                });
+            }
             
             const staffRequired = activeStaffUnits.size + newStaffUnits.size;
 
