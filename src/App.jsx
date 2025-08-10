@@ -1434,7 +1434,9 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                             if (item.startTime < interval.end && itemEnd > interval.start) {
                                 item.resourceIds.forEach(resId => {
                                     const linkGroup = resourceLinks.find(g => g.resourceIds.includes(resId));
-                                    activeStaffUnits.add(linkGroup ? linkGroup.id : resId);
+                                    if(linkGroup) {
+                                        activeStaffUnits.add(linkGroup.id);
+                                    }
                                 });
                             }
                         }
@@ -1442,18 +1444,17 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                 });
                 
                 const staffUsed = activeStaffUnits.size;
-
+                
                 if (staffUsed >= staffAvailable) {
-                    const resourcesInArea = resources.filter(r => {
+                    const allLinkedResourcesInArea = resourceLinks.flatMap(link => link.resourceIds);
+                    const unbookedLinkedResources = resources.filter(r => {
                         const activity = activities.find(a => a.id === r.activityId);
-                        return activity && activity.areaId === area.id;
+                        return activity && activity.areaId === area.id && allLinkedResourcesInArea.includes(r.id);
                     });
-                    
-                    resourcesInArea.forEach(resource => {
-                        const linkGroupOfResource = resourceLinks.find(g => g.resourceIds.includes(resource.id));
-                        const resourceStaffUnit = linkGroupOfResource ? linkGroupOfResource.id : resource.id;
 
-                        if (!activeStaffUnits.has(resourceStaffUnit)) {
+                    unbookedLinkedResources.forEach(resource => {
+                        const linkGroupOfResource = resourceLinks.find(g => g.resourceIds.includes(resource.id));
+                        if (linkGroupOfResource && !activeStaffUnits.has(linkGroupOfResource.id)) {
                              const slotIdentifier = `${interval.start.getTime()}-${resource.id}`;
                              if (!addedSlots.has(slotIdentifier)) {
                                  slots.push({ id: `unavailable-${slotIdentifier}`, resourceId: resource.id, startTime: interval.start, duration: 15 });
@@ -2701,7 +2702,9 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
                     if (itemStart < iEnd && itemEnd > iStart) {
                         i.resourceIds.forEach(resId => {
                             const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
-                            activeStaffUnits.add(linkGroup ? linkGroup.id : resId);
+                            if(linkGroup) {
+                                activeStaffUnits.add(linkGroup.id);
+                            }
                         });
                     }
                 });
@@ -2710,7 +2713,9 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             const newStaffUnits = new Set();
             itemToSave.resourceIds.forEach(resId => {
                 const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
-                newStaffUnits.add(linkGroup ? linkGroup.id : resId);
+                if (linkGroup) {
+                    newStaffUnits.add(linkGroup.id);
+                }
             });
             
             const staffRequired = activeStaffUnits.size + newStaffUnits.size;
