@@ -36,6 +36,7 @@ const BOOKING_STATUS_COLORS = {
 const BOOKING_STATUSES = ['Booked', 'Checked In', 'Done'];
 const ROW_HEIGHT_REM = 2.5; // Corresponds to h-10 (40px)
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MULTI_BOOKING_COLORS = ['#FF6B6B', '#4ECDC4', '#F7B801', '#845EC2', '#D65DB1', '#FF9671', '#00C9A7', '#C4FCEF', '#FFC75F', '#F9F871'];
 
 
 const ADD_ON_ICONS = {
@@ -732,61 +733,44 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
     const [sortDirection, setSortDirection] = useState('asc');
 
     const dailyBookings = useMemo(() => {
-        return bookings.flatMap(booking => 
-            booking.items
-                .filter(item => {
-                    const itemDate = item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime);
-                    return itemDate.toDateString() === selectedDate.toDateString() && activityFilter.includes(item.activityId);
-                })
-                .map(item => ({
-                    ...booking,
-                    bookingId: booking.id,
-                    item: item,
-                    startTime: item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime)
-                }))
-        );
-    }, [bookings, selectedDate, activityFilter]);
+        const filtered = bookings
+            .map(booking => {
+                const itemsOnDate = booking.items
+                    .filter(item => {
+                        const itemDate = item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime);
+                        return itemDate.toDateString() === selectedDate.toDateString() && activityFilter.includes(item.activityId);
+                    })
+                    .sort((a, b) => a.startTime - b.startTime);
 
-    const filteredAndSortedBookings = useMemo(() => {
-        let filtered = dailyBookings;
+                return { ...booking, items: itemsOnDate };
+            })
+            .filter(booking => booking.items.length > 0);
 
         if (searchTerm) {
             const lowerSearchTerm = searchTerm.toLowerCase();
-            filtered = filtered.filter(b => 
+            return filtered.filter(b =>
                 b.customerName.toLowerCase().includes(lowerSearchTerm) ||
-                (activities.find(a => a.id === b.item.activityId)?.name.toLowerCase().includes(lowerSearchTerm))
+                b.items.some(item => activities.find(a => a.id === item.activityId)?.name.toLowerCase().includes(lowerSearchTerm))
             );
         }
+        return filtered;
+    }, [bookings, selectedDate, activityFilter, searchTerm, activities]);
 
-        return filtered.sort((a, b) => {
-            let compareA, compareB;
+    const sortedBookings = useMemo(() => {
+        return [...dailyBookings].sort((a, b) => {
+            const aStartTime = a.items[0].startTime;
+            const bStartTime = b.items[0].startTime;
 
-            switch (sortBy) {
-                case 'customer':
-                    compareA = a.customerName.toLowerCase();
-                    compareB = b.customerName.toLowerCase();
-                    break;
-                case 'activity':
-                    compareA = activities.find(act => act.id === a.item.activityId)?.name.toLowerCase() || '';
-                    compareB = activities.find(act => act.id === b.item.activityId)?.name.toLowerCase() || '';
-                    break;
-                case 'time':
-                default:
-                    compareA = a.startTime;
-                    compareB = b.startTime;
-                    break;
+            if (sortBy === 'time') {
+                return sortDirection === 'asc' ? aStartTime - bStartTime : bStartTime - aStartTime;
             }
-
-            if (compareA < compareB) {
-                return sortDirection === 'asc' ? -1 : 1;
-            }
-            if (compareA > compareB) {
-                return sortDirection === 'asc' ? 1 : -1;
+            if (sortBy === 'customer') {
+                const compare = a.customerName.localeCompare(b.customerName);
+                return sortDirection === 'asc' ? compare : -compare;
             }
             return 0;
         });
-
-    }, [dailyBookings, searchTerm, sortBy, sortDirection, activities]);
+    }, [dailyBookings, sortBy, sortDirection]);
 
     const handleSort = (column) => {
         if (sortBy === column) {
@@ -802,7 +786,7 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
         return sortDirection === 'asc' ? <ArrowUp size={14} className="inline-block ml-1" /> : <ArrowDown size={14} className="inline-block ml-1" />;
     };
 
-     const handleCycleStatus = async (bookingId, currentStatus) => {
+    const handleCycleStatus = async (bookingId, currentStatus) => {
         const currentStatusIndex = BOOKING_STATUSES.indexOf(currentStatus);
         const nextStatusIndex = (currentStatusIndex + 1) % BOOKING_STATUSES.length;
         const newStatus = BOOKING_STATUSES[nextStatusIndex];
@@ -840,64 +824,71 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredAndSortedBookings.length > 0 ? filteredAndSortedBookings.map((b, index) => {
-                                const activity = activities.find(a => a.id === b.item.activityId);
-                                const fullBooking = bookings.find(fb => fb.id === b.bookingId);
-                                const hasAddOns = b.selectedAddOns && b.selectedAddOns.length > 0;
-                                
+                            {sortedBookings.length > 0 ? sortedBookings.map(booking => {
+                                const hasAddOns = booking.selectedAddOns && booking.selectedAddOns.length > 0;
+                                const fullBooking = bookings.find(fb => fb.id === booking.id);
                                 return (
-                                    <tr 
-                                        key={`${b.bookingId}-${b.item.id}-${index}`} 
-                                        className={`border-t border-gray-700 cursor-pointer ${
-                                            hasAddOns 
-                                            ? 'bg-purple-900/20 hover:bg-purple-800/40' 
-                                            : 'hover:bg-gray-700/40'
-                                        }`} 
-                                        onClick={() => onEditBooking(fullBooking)}>
-                                        <td className="p-4 font-medium">{b.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td className="p-4 font-semibold">{b.customerName}</td>
-                                        <td className="p-4 hidden md:table-cell">
-                                            <p className="font-medium">{activity?.name || 'N/A'}</p>
-                                            <p className="text-xs text-gray-400">
-                                                {b.item.resourceIds.map(rid => resources.find(r => r.id === rid)?.name).join(', ')}
-                                            </p>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-1.5 bg-gray-700 px-2 py-1 rounded-full w-fit mx-auto">
-                                                <Users size={14}/> <span>{b.groupSize}</span>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                {b.notes && <FileText size={16} className="text-gray-400" title={b.notes} />}
-                                                {hasAddOns && b.selectedAddOns.map(sa => {
-                                                    const addOn = addOns.find(a => a.id === sa.addOnId);
-                                                    return addOn ? (
-                                                        <AddOnIcon 
-                                                            key={addOn.id} 
-                                                            name={addOn.iconName} 
-                                                            size={16} 
-                                                            className="text-gray-400" 
-                                                            title={`${addOn.name} (x${sa.quantity})`} 
-                                                        />
-                                                    ) : null;
-                                                })}
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex justify-center">
-                                                 <PaymentStatusIcon booking={fullBooking} activities={activities} addOns={addOns} />
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleCycleStatus(b.bookingId, b.status); }}
-                                                className={`text-xs font-bold py-1 px-3 rounded-full border ${BOOKING_STATUS_COLORS[b.status]}`}
-                                            >
-                                                {b.status}
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={booking.id}>
+                                        {booking.items.map((item, itemIndex) => {
+                                            const activity = activities.find(a => a.id === item.activityId);
+                                            const isSubItem = itemIndex > 0;
+                                            return (
+                                                <tr
+                                                    key={item.id || itemIndex}
+                                                    className={`border-t border-gray-700 cursor-pointer ${hasAddOns ? 'bg-purple-900/20 hover:bg-purple-800/40' : 'hover:bg-gray-700/40'}`}
+                                                    onClick={() => onEditBooking(fullBooking)}
+                                                >
+                                                    <td className={`p-4 font-medium ${isSubItem ? 'pl-8 border-l-2 border-gray-600' : ''}`}>
+                                                        {item.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </td>
+                                                    <td className="p-4 font-semibold">{!isSubItem && booking.customerName}</td>
+                                                    <td className="p-4 hidden md:table-cell">
+                                                        <p className="font-medium">{activity?.name || 'N/A'}</p>
+                                                        <p className="text-xs text-gray-400">
+                                                            {item.resourceIds.map(rid => resources.find(r => r.id === rid)?.name).join(', ')}
+                                                        </p>
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        {!isSubItem && (
+                                                            <div className="flex items-center justify-center gap-1.5 bg-gray-700 px-2 py-1 rounded-full w-fit mx-auto">
+                                                                <Users size={14} /> <span>{booking.groupSize}</span>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        {!isSubItem && (
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                {booking.notes && <FileText size={16} className="text-gray-400" title={booking.notes} />}
+                                                                {hasAddOns && booking.selectedAddOns.map(sa => {
+                                                                    const addOn = addOns.find(a => a.id === sa.addOnId);
+                                                                    return addOn ? (
+                                                                        <AddOnIcon key={addOn.id} name={addOn.iconName} size={16} className="text-gray-400" title={`${addOn.name} (x${sa.quantity})`} />
+                                                                    ) : null;
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        {!isSubItem && (
+                                                            <div className="flex justify-center">
+                                                                <PaymentStatusIcon booking={fullBooking} activities={activities} addOns={addOns} />
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        {!isSubItem && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleCycleStatus(booking.id, booking.status); }}
+                                                                className={`text-xs font-bold py-1 px-3 rounded-full border ${BOOKING_STATUS_COLORS[booking.status]}`}
+                                                            >
+                                                                {booking.status}
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </React.Fragment>
                                 );
                             }) : (
                                 <tr>
@@ -1353,6 +1344,15 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         }))
         .filter(activity => activity.resources.length > 0), [activities, resources, activityFilter]);
 
+    const bookingColorMap = useMemo(() => {
+        const multiItemBookings = filteredBookings.filter(b => b.items.length > 1);
+        const map = {};
+        multiItemBookings.forEach((booking, index) => {
+            map[booking.id] = MULTI_BOOKING_COLORS[index % MULTI_BOOKING_COLORS.length];
+        });
+        return map;
+    }, [filteredBookings]);
+
     const unavailableSlots = useMemo(() => {
         const slots = [];
         const addedSlots = new Set();
@@ -1501,110 +1501,122 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                         </div>
                     )}
 
-                    {!isClosed && groupedResources.map(activity => (
-                        <div key={activity.id}>
-                            <div className="h-8 border-b border-gray-600"></div>
-                            {activity.resources.map(resource => (
-                                <div key={resource.id} className={`relative flex border-b border-gray-700 ${rowHeightClass}`}>
-                                    {activity.type === 'Fixed Time' ? (
-                                        <FixedTimeSlots
-                                            resource={resource}
-                                            activity={activity}
-                                            areas={areas}
-                                            selectedDate={selectedDate}
-                                            onNewBooking={onNewBooking}
-                                            getBookingItemPosition={getBookingItemPosition}
-                                            filteredBookings={filteredBookings}
-                                            unavailableSlots={unavailableSlots}
-                                            onUpdateTimeSlot={handleUpdateTimeSlot}
-                                            scheduleOverrides={scheduleOverrides}
-                                        />
-                                    ) : (
-                                        timeSlots.slice(0, -1).map((timeStr, i) => (
-                                            <div
-                                                key={i}
-                                                style={{minWidth: `${slotWidthRem}rem`}}
-                                                className={`flex-shrink-0 h-full border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
-                                                onClick={(e) => {
-                                                    const time = new Date(selectedDate);
-                                                    const [hours, minutes] = timeStr.split(':');
-                                                    time.setHours(hours, minutes, 0, 0);
-                                                    if (e.shiftKey) {
-                                                        onNewBlock(null, time, resource.id);
-                                                    } else {
-                                                        onNewBooking(null, time, resource.id);
-                                                    }
-                                                }}
-                                            ></div>
-                                        ))
-                                    )}
-                                    {filteredBookings.flatMap(booking => booking.items
-                                        .filter(item => item.resourceIds.includes(resource.id))
-                                        .map(item => {
-                                            const { left, width } = getBookingItemPosition(item);
-                                            const isPrimaryBlock = item.resourceIds[0] === resource.id;
+                    {!isClosed && groupedResources.map((activity, activityIndex) => {
+                        return (
+                            <div key={activity.id}>
+                                <div className="h-8 border-b border-gray-600"></div>
+                                {activity.resources.map((resource) => {
+                                    return (
+                                        <div key={resource.id} className={`relative flex border-b border-gray-700 ${rowHeightClass}`}>
+                                            {activity.type === 'Fixed Time' ? (
+                                                <FixedTimeSlots
+                                                    resource={resource}
+                                                    activity={activity}
+                                                    areas={areas}
+                                                    selectedDate={selectedDate}
+                                                    onNewBooking={onNewBooking}
+                                                    getBookingItemPosition={getBookingItemPosition}
+                                                    filteredBookings={filteredBookings}
+                                                    unavailableSlots={unavailableSlots}
+                                                    onUpdateTimeSlot={handleUpdateTimeSlot}
+                                                    scheduleOverrides={scheduleOverrides}
+                                                />
+                                            ) : (
+                                                timeSlots.slice(0, -1).map((timeStr, i) => (
+                                                    <div
+                                                        key={i}
+                                                        style={{minWidth: `${slotWidthRem}rem`}}
+                                                        className={`flex-shrink-0 h-full border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
+                                                        onClick={(e) => {
+                                                            const time = new Date(selectedDate);
+                                                            const [hours, minutes] = timeStr.split(':');
+                                                            time.setHours(hours, minutes, 0, 0);
+                                                            if (e.shiftKey) {
+                                                                onNewBlock(null, time, resource.id);
+                                                            } else {
+                                                                onNewBooking(null, time, resource.id);
+                                                            }
+                                                        }}
+                                                    ></div>
+                                                ))
+                                            )}
+                                            {filteredBookings.flatMap(booking => booking.items
+                                                .filter(item => item.resourceIds.includes(resource.id))
+                                                .map(item => {
+                                                    const { left, width } = getBookingItemPosition(item);
+                                                    const isPrimaryBlock = item.resourceIds[0] === resource.id;
+                                                    const isMultiItem = booking.items.length > 1;
+                                                    const multiItemBorderColor = isMultiItem ? bookingColorMap[booking.id] : undefined;
 
-                                            return (
-                                                <div
-                                                    key={`${booking.id}-${item.id}`}
-                                                    onClick={(e) => { e.stopPropagation(); onNewBooking(booking); }}
-                                                    className={`absolute top-1 bottom-1 flex items-center justify-between px-2 rounded-md border cursor-pointer hover:opacity-90 transition-opacity z-10 ${BOOKING_STATUS_COLORS[booking.status]}`}
-                                                    style={{ left, width, minWidth: '4rem' }}
-                                                >
-                                                    {isPrimaryBlock && (
-                                                        <>
-                                                            <p className="font-bold text-xs truncate text-white flex-grow mr-2">{booking.customerName || 'Walk-In'}</p>
-                                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                                <PaymentStatusIcon booking={booking} activities={activities} addOns={addOns} />
-                                                                {booking.notes && <FileText size={12} className="text-gray-200" title={booking.notes} />}
-                                                                {booking.selectedAddOns && booking.selectedAddOns.map(sa => {
-                                                                    const addOn = addOns.find(a => a.id === sa.addOnId);
-                                                                    return addOn ? (
-                                                                        <div key={addOn.id} className="bg-black/25 p-0.5 rounded-sm flex items-center justify-center">
-                                                                             <AddOnIcon name={addOn.iconName} size={12} className="text-gray-200" title={`${addOn.name} (x${sa.quantity})`} />
+                                                    const itemStyle = { left, width, minWidth: '4rem' };
+                                                    if (multiItemBorderColor) {
+                                                        itemStyle.borderColor = multiItemBorderColor;
+                                                        itemStyle.borderWidth = '2px';
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={`${booking.id}-${item.id}`}
+                                                            onClick={(e) => { e.stopPropagation(); onNewBooking(booking); }}
+                                                            className={`absolute top-1 bottom-1 flex items-center justify-between px-2 rounded-md border cursor-pointer hover:opacity-90 transition-opacity z-10 ${BOOKING_STATUS_COLORS[booking.status]}`}
+                                                            style={itemStyle}
+                                                        >
+                                                            {isPrimaryBlock && (
+                                                                <>
+                                                                    <p className="font-bold text-xs truncate text-white flex-grow mr-2">{booking.customerName || 'Walk-In'}</p>
+                                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                                        <PaymentStatusIcon booking={booking} activities={activities} addOns={addOns} />
+                                                                        {booking.notes && <FileText size={12} className="text-gray-200" title={booking.notes} />}
+                                                                        {booking.selectedAddOns && booking.selectedAddOns.map(sa => {
+                                                                            const addOn = addOns.find(a => a.id === sa.addOnId);
+                                                                            return addOn ? (
+                                                                                <div key={addOn.id} className="bg-black/25 p-0.5 rounded-sm flex items-center justify-center">
+                                                                                    <AddOnIcon name={addOn.iconName} size={12} className="text-gray-200" title={`${addOn.name} (x${sa.quantity})`} />
+                                                                                </div>
+                                                                            ) : null;
+                                                                        })}
+                                                                        <div className="flex items-center gap-1 text-xs text-gray-200 bg-black/20 px-1.5 py-0.5 rounded-md">
+                                                                            <Users size={12} />
+                                                                            <span>{booking.groupSize}</span>
                                                                         </div>
-                                                                    ) : null;
-                                                                })}
-                                                                <div className="flex items-center gap-1 text-xs text-gray-200 bg-black/20 px-1.5 py-0.5 rounded-md">
-                                                                    <Users size={12} />
-                                                                    <span>{booking.groupSize}</span>
-                                                                </div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleCycleStatus(booking); }} className="hover:bg-black/20 p-1 rounded-full">
-                                                                    <MoreVertical size={14} />
-                                                                </button>
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                    {filteredBlocks.filter(block => block.resourceId === resource.id).map(block => {
-                                        const { left, width } = getBookingItemPosition(block);
-                                        return (
-                                            <div
-                                                key={block.id}
-                                                onClick={() => onNewBlock(block)}
-                                                className="absolute top-1 bottom-1 bg-gray-700/80 rounded-md z-5 p-2 flex items-center cursor-pointer border border-gray-600"
-                                                style={{ left, width }}
-                                            >
-                                                <div className="h-full w-full bg-stripes"></div>
-                                                <p className="text-xs font-semibold text-white truncate absolute left-2 right-2">{block.reason || 'Blocked'}</p>
-                                            </div>
-                                        );
-                                    })}
-                                     {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
-                                         const { left, width } = getBookingItemPosition(slot);
-                                         return (
-                                             <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
-                                                 <div className="h-full w-full bg-stripes"></div>
-                                             </div>
-                                         )
-                                     })}
-                                </div>
-                            ))}
-                        </div>
-                    ))}
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleCycleStatus(booking); }} className="hover:bg-black/20 p-1 rounded-full">
+                                                                            <MoreVertical size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                            {filteredBlocks.filter(block => block.resourceId === resource.id).map(block => {
+                                                const { left, width } = getBookingItemPosition(block);
+                                                return (
+                                                    <div
+                                                        key={block.id}
+                                                        onClick={() => onNewBlock(block)}
+                                                        className="absolute top-1 bottom-1 bg-gray-700/80 rounded-md z-5 p-2 flex items-center cursor-pointer border border-gray-600"
+                                                        style={{ left, width }}
+                                                    >
+                                                        <div className="h-full w-full bg-stripes"></div>
+                                                        <p className="text-xs font-semibold text-white truncate absolute left-2 right-2">{block.reason || 'Blocked'}</p>
+                                                    </div>
+                                                );
+                                            })}
+                                            {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
+                                                const { left, width } = getBookingItemPosition(slot);
+                                                return (
+                                                    <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
+                                                        <div className="h-full w-full bg-stripes"></div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
                     {isToday && nowLinePos && (
                         <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 pointer-events-none" style={{ left: nowLinePos }}>
                             <div className="absolute -top-1 -ml-1 w-2 h-2 bg-red-500 rounded-full"></div>
