@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3 } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -124,6 +124,8 @@ export default function App() {
     const [showSearch, setShowSearch] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const searchRef = useRef(null);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef(null);
 
     // --- Firebase Initialization and Auth ---
     useEffect(() => {
@@ -243,20 +245,21 @@ export default function App() {
         }
     }, [activities]);
 
-    // Click outside handler for search input
+    // Click outside handler for various popups
     useEffect(() => {
         function handleClickOutside(event) {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
                 setShowSearch(false);
             }
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setIsMenuOpen(false);
+            }
         }
-        if (showSearch) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
+        document.addEventListener("mousedown", handleClickOutside);
         return () => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
-    }, [showSearch]);
+    }, []);
 
     const dailyBookings = useMemo(() => {
         return bookings.filter(booking => 
@@ -430,35 +433,24 @@ export default function App() {
                              </button>
                          </>
                      )}
-                    <div className="flex items-center gap-1 p-1 bg-gray-900/50 rounded-lg shrink-0">
-                        <button
-                            onClick={() => setView('dashboard')}
-                            className={`p-2 rounded-md ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
-                            aria-label="Dashboard View"
-                        >
-                            <LayoutDashboard size={18} />
-                        </button>
-                        <button
-                            onClick={() => setView('timeline')}
-                            className={`p-2 rounded-md ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
-                            aria-label="Timeline View"
-                        >
-                            <Calendar size={18} />
-                        </button>
-                         <button
-                            onClick={() => setView('list')}
-                            className={`p-2 rounded-md ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
-                            aria-label="List View"
-                        >
-                            <List size={18} />
-                        </button>
-                        <button
-                            onClick={() => setView('settings')}
-                            className={`p-2 rounded-md ${view === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
-                            aria-label="Settings View"
-                        >
-                            <Settings size={18} />
-                        </button>
+                    {/* Desktop Menu */}
+                    <div className="hidden sm:flex items-center gap-1 p-1 bg-gray-900/50 rounded-lg shrink-0">
+                        <button onClick={() => setView('dashboard')} className={`p-2 rounded-md ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`} aria-label="Dashboard View"><LayoutDashboard size={18} /></button>
+                        <button onClick={() => setView('timeline')} className={`p-2 rounded-md ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`} aria-label="Timeline View"><Calendar size={18} /></button>
+                        <button onClick={() => setView('list')} className={`p-2 rounded-md ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`} aria-label="List View"><List size={18} /></button>
+                        <button onClick={() => setView('settings')} className={`p-2 rounded-md ${view === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`} aria-label="Settings View"><Settings size={18} /></button>
+                    </div>
+                    {/* Mobile Menu */}
+                    <div ref={menuRef} className="sm:hidden relative">
+                        <button onClick={() => setIsMenuOpen(prev => !prev)} className="p-2.5 bg-gray-900/50 rounded-lg hover:bg-gray-700"><Menu size={18} /></button>
+                        {isMenuOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-2xl z-50 p-2">
+                                <button onClick={() => {setView('dashboard'); setIsMenuOpen(false);}} className={`w-full flex items-center gap-3 p-2 rounded-md text-left ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}><LayoutDashboard size={18} /> Dashboard</button>
+                                <button onClick={() => {setView('timeline'); setIsMenuOpen(false);}} className={`w-full flex items-center gap-3 p-2 rounded-md text-left ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}><Calendar size={18} /> Timeline</button>
+                                <button onClick={() => {setView('list'); setIsMenuOpen(false);}} className={`w-full flex items-center gap-3 p-2 rounded-md text-left ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}><List size={18} /> List</button>
+                                <button onClick={() => {setView('settings'); setIsMenuOpen(false);}} className={`w-full flex items-center gap-3 p-2 rounded-md text-left ${view === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}><Settings size={18} /> Settings</button>
+                            </div>
+                        )}
                     </div>
                 </nav>
             </header>
@@ -1505,6 +1497,14 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         return consolidatedSlots;
     }, [filteredBookings, resourceLinks, resources, activities, areas, selectedDate]);
 
+    const formatTime12Hour = (timeStr) => {
+        const [hourStr] = timeStr.split(':');
+        const hour = parseInt(hourStr, 10);
+        const period = hour >= 12 ? 'PM' : 'AM';
+        let hour12 = hour % 12;
+        if (hour12 === 0) hour12 = 12;
+        return `${hour12}${period}`;
+    };
 
     return (
         <div className="flex-grow h-[calc(100vh-113px)] flex overflow-hidden relative">
@@ -1550,10 +1550,10 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
             </div>
             <div ref={timelineBodyRef} className="flex-grow overflow-auto">
                 <div className="relative min-w-max">
-                    <div ref={timeHeaderRef} className="flex sticky top-0 z-10 bg-gray-800 border-b border-gray-600 h-10">
+                    <div ref={timeHeaderRef} className="flex sticky top-0 z-20 bg-gray-800 border-b border-gray-600 h-10">
                         {timeSlots.slice(0, -1).map(time => (
                             <div key={time} style={{minWidth: `${slotWidthRem}rem`}} className={`flex-shrink-0 text-center text-xs text-gray-400 flex items-center justify-center border-r border-gray-700`}>
-                                {time.endsWith(':00') ? <strong>{time}</strong> : <span className="text-gray-600">·</span>}
+                                {time.endsWith(':00') ? <strong>{formatTime12Hour(time)}</strong> : <span className="text-gray-600">·</span>}
                             </div>
                         ))}
                     </div>
@@ -3644,18 +3644,20 @@ function DashboardView({ bookings, activities, addOns, resources }) {
     );
 
     const Chart = ({ title, data, max, unit }) => (
-         <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-6">
+         <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-6 flex flex-col min-w-0">
             <h3 className="text-xl font-semibold mb-4 text-white">{title}</h3>
-            <div className="flex items-end gap-2 h-64 border-l border-b border-gray-600 pl-4 pb-4">
-                {Object.entries(data).map(([date, value]) => (
-                    <div key={date} className="flex-1 flex flex-col justify-end items-center group relative">
-                        <div className="absolute -top-8 bg-gray-900 px-2 py-1 text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                            {unit === '$' ? '$' : ''}{value.toFixed(unit === '$' ? 2 : 0)}
+            <div className="overflow-x-auto w-full">
+                <div className="flex items-end gap-2 h-64 border-l border-b border-gray-600 pl-4 pb-4 min-w-max">
+                    {Object.entries(data).map(([date, value]) => (
+                        <div key={date} className="flex-1 flex flex-col justify-end items-center group relative" style={{minWidth: '2rem'}}>
+                            <div className="absolute -top-8 bg-gray-900 px-2 py-1 text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                {unit === '$' ? '$' : ''}{value.toFixed(unit === '$' ? 2 : 0)}
+                            </div>
+                            <div className="w-full bg-blue-600 hover:bg-blue-500 rounded-t-md" style={{height: `${max > 0 ? (value / max) * 100 : 0}%`}}></div>
+                            <div className="text-xs text-gray-400 mt-2 transform -rotate-45 whitespace-nowrap">{new Date(date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</div>
                         </div>
-                        <div className="w-full bg-blue-600 hover:bg-blue-500 rounded-t-md" style={{height: `${max > 0 ? (value / max) * 100 : 0}%`}}></div>
-                        <div className="text-xs text-gray-400 mt-2 transform -rotate-45 whitespace-nowrap">{new Date(date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -3678,7 +3680,7 @@ function DashboardView({ bookings, activities, addOns, resources }) {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
                     <div className="md:col-span-3 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <StatCard title="Total Revenue" value={dashboardData.totalRevenue} icon={DollarSign} format={(v) => `$${v.toFixed(2)}`} />
+                        <StatCard title="Total Revenue" value={dashboardData.totalRevenue} icon={DollarSign} format={(v) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
                         <StatCard title="Total Bookings" value={dashboardData.totalBookings} icon={ShoppingCart} />
                         <StatCard title="Total Guests" value={dashboardData.totalGuests} icon={Users} />
                         <StatCard title="Avg. Guest Size" value={dashboardData.avgGuestSize} icon={Users} format={(v) => v.toFixed(1)} />
