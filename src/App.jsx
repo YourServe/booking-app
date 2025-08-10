@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu, RefreshCw, Send } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -56,11 +56,11 @@ const calculateBookingPrice = (booking, activities, addOns) => {
     if (!booking) return 0;
     const { groupSize = 0, items = [], selectedAddOns = [] } = booking;
     const numGroupSize = Number(groupSize) || 0;
-    if (numGroupSize < 1) return 0;
 
     const activitiesTotal = items.reduce((acc, item) => {
         const activity = activities.find(a => a.id === item.activityId);
         if (!activity) return acc;
+        if (numGroupSize < 1 && activity.price > 0) return acc;
 
         let itemPrice = 0;
         if (activity.type === 'Fixed Time') {
@@ -70,16 +70,24 @@ const calculateBookingPrice = (booking, activities, addOns) => {
             const slots = item.duration / 15;
             itemPrice = pricePerSlot * slots;
         }
-        return acc + itemPrice;
+        return acc + (itemPrice * numGroupSize);
     }, 0);
 
     const addOnsTotal = selectedAddOns.reduce((acc, selected) => {
         const addOn = addOns.find(a => a.id === selected.addOnId);
         if (!addOn) return acc;
-        return acc + (addOn.price * selected.quantity);
+        
+        if (addOn.pricingType === 'variable') {
+            return acc + (Number(selected.amount) || 0);
+        } else if (addOn.pricingType === 'oneOff') {
+            return acc + (addOn.price * selected.quantity);
+        } else { // perPerson
+            if (numGroupSize < 1) return acc;
+            return acc + (addOn.price * numGroupSize);
+        }
     }, 0);
 
-    return (activitiesTotal * numGroupSize) + addOnsTotal;
+    return activitiesTotal + addOnsTotal;
 };
 
 
@@ -2119,13 +2127,19 @@ function AddOnManager({ db, appId, addOns }) {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [iconName, setIconName] = useState('Default');
+    const [pricingType, setPricingType] = useState('perPerson'); // 'perPerson', 'oneOff', or 'variable'
     const [editingId, setEditingId] = useState(null);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!name || !price) return;
+        if (!name || (pricingType !== 'variable' && !price)) return;
         const collectionRef = collection(db, `artifacts/${appId}/public/data/addOns`);
-        const data = { name, price: Number(price), iconName };
+        const data = { 
+            name, 
+            price: pricingType === 'variable' ? 0 : Number(price), 
+            iconName, 
+            pricingType 
+        };
 
         if (editingId) {
             await setDoc(doc(collectionRef, editingId), data);
@@ -2140,6 +2154,7 @@ function AddOnManager({ db, appId, addOns }) {
         setName(addOn.name);
         setPrice(addOn.price);
         setIconName(addOn.iconName || 'Default');
+        setPricingType(addOn.pricingType || 'perPerson');
     };
 
     const handleDelete = async (id) => {
@@ -2150,6 +2165,7 @@ function AddOnManager({ db, appId, addOns }) {
         setName('');
         setPrice('');
         setIconName('Default');
+        setPricingType('perPerson');
         setEditingId(null);
     };
 
@@ -2159,10 +2175,29 @@ function AddOnManager({ db, appId, addOns }) {
                 <h3 className="text-xl font-semibold mb-4">{editingId ? 'Edit Add-On' : 'Add New Add-On'}</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <InputField label="Add-On Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Drink Package" Icon={ShoppingCart} required={true} />
-                    <InputField label="Price per Person" type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g., 15" Icon={DollarSign} required={true}/>
+                    <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="text-sm font-medium text-gray-400 mb-1 block">Pricing Type</label>
+                            <select value={pricingType} onChange={(e) => setPricingType(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="perPerson">Per Person</option>
+                                <option value="oneOff">One-Off</option>
+                                <option value="variable">Variable (Tab)</option>
+                            </select>
+                        </div>
+                        <InputField 
+                            label="Price" 
+                            type="number" 
+                            value={price} 
+                            onChange={(e) => setPrice(e.target.value)} 
+                            placeholder={pricingType === 'variable' ? 'Set at booking' : 'e.g., 15'} 
+                            Icon={DollarSign} 
+                            required={pricingType !== 'variable'}
+                            disabled={pricingType === 'variable'}
+                        />
+                    </div>
                     <div>
                         <label className="text-sm font-medium text-gray-400 mb-1 block">Icon</label>
-                        <select value={iconName} onChange={(e) => setIconName(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <select value={iconName} onChange={(e) => setIconName(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                             {Object.keys(ADD_ON_ICONS).map(name => <option key={name} value={name}>{name}</option>)}
                         </select>
                     </div>
@@ -2181,7 +2216,12 @@ function AddOnManager({ db, appId, addOns }) {
                                 <AddOnIcon name={addOn.iconName} size={18} />
                                 <div>
                                     <p className="font-semibold">{addOn.name}</p>
-                                    <p className="text-xs text-gray-400">${addOn.price}/person</p>
+                                    <p className="text-xs text-gray-400">
+                                        {addOn.pricingType === 'variable' 
+                                            ? 'Variable Price' 
+                                            : `$${addOn.price} / ${addOn.pricingType === 'oneOff' ? 'item' : 'person'}`
+                                        }
+                                    </p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
@@ -2586,7 +2626,7 @@ function ClosureManager({ db, appId, closures }) {
 }
 
 
-// --- Booking Modal Component (Updated with Payments) ---
+// --- Booking Modal Component (Updated with Payments & Invoicing) ---
 function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activities, resources, customers, addOns, resourceLinks, bookings, blocks, selectedDate, areas, closures }) {
     const [customerName, setCustomerName] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ phone: '', email: '' });
@@ -2601,6 +2641,7 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
     const [customerSuggestions, setCustomerSuggestions] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const [selectedCustomerId, setSelectedCustomerId] = useState(null);
+    const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     
     const resetModalState = useCallback(() => {
         const defaultStartTime = new Date(selectedDate);
@@ -2657,8 +2698,14 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
     }, [customerSearch, customers]);
 
     useEffect(() => {
-        setSelectedAddOns(prev => prev.map(addOn => ({...addOn, quantity: Number(groupSize)})))
-    }, [groupSize]);
+        setSelectedAddOns(prev => prev.map(addOn => {
+            const addOnInfo = addOns.find(a => a.id === addOn.addOnId);
+            if (addOnInfo?.pricingType === 'oneOff' || addOnInfo?.pricingType === 'variable') {
+                return addOn;
+            }
+            return {...addOn, quantity: Number(groupSize)};
+        }))
+    }, [groupSize, addOns]);
 
 
     const handleSelectCustomer = (customer) => {
@@ -2709,13 +2756,23 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             if (existing) {
                 return prev.filter(a => a.addOnId !== addOnId);
             } else {
-                return [...prev, { addOnId, quantity: Number(groupSize) }];
+                const addOnInfo = addOns.find(a => a.id === addOnId);
+                const quantity = (addOnInfo?.pricingType === 'oneOff' || addOnInfo?.pricingType === 'variable') ? 1 : Number(groupSize);
+                const newAddOn = { addOnId, quantity };
+                if (addOnInfo?.pricingType === 'variable') {
+                    newAddOn.amount = ''; // Set initial amount to empty string for placeholder
+                }
+                return [...prev, newAddOn];
             }
         });
     };
 
     const handleAddOnQuantityChange = (addOnId, quantity) => {
         setSelectedAddOns(prev => prev.map(a => a.addOnId === addOnId ? {...a, quantity: Number(quantity)} : a));
+    };
+    
+    const handleAddOnAmountChange = (addOnId, amount) => {
+        setSelectedAddOns(prev => prev.map(a => a.addOnId === addOnId ? { ...a, amount: amount } : a));
     };
 
     const handleSave = async () => {
@@ -2792,7 +2849,6 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             allOtherBookings.forEach(b => {
                 b.items.forEach(i => {
                     const iActivity = activities.find(a => a.id === i.activityId);
-                    // AMENDMENT: Only count staff usage for 'Fixed Time' activities
                     if (!iActivity || iActivity.areaId !== area.id || iActivity.type !== 'Fixed Time') return;
 
                     const iStart = i.startTime;
@@ -2810,12 +2866,10 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
             });
 
             const newStaffUnits = new Set();
-            // AMENDMENT: Only apply staff rules if the item being saved is 'Fixed Time'
             if (activity.type === 'Fixed Time') {
                 itemToSave.resourceIds.forEach(resId => {
                     const linkGroup = resourceLinks.find(link => link.resourceIds.includes(resId));
                     if (linkGroup) {
-                        // Don't count a group if it's already active
                         if (!activeStaffUnits.has(linkGroup.id)) {
                              newStaffUnits.add(linkGroup.id);
                         }
@@ -2894,152 +2948,187 @@ function BookingModal({ isOpen, onClose, db, appId, booking, initialData, activi
     };
 
     if (!isOpen) return null;
+    
+    const currentBookingState = {
+        customerName,
+        customerDetails,
+        groupSize,
+        items: bookingItems,
+        selectedAddOns,
+        payments,
+        notes
+    };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-                <header className="p-4 border-b border-gray-700 flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-white">{booking ? 'Edit Booking' : 'New Booking'}</h2>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700"><X size={20} /></button>
-                </header>
-                
-                <main className="p-6 space-y-6 overflow-y-auto">
-                    {/* Customer & Group Section */}
-                    <div className="p-4 bg-gray-900/50 rounded-lg border border-gray-700">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-2">
-                                <div className="relative">
-                                    <InputField 
-                                        label="Customer Name"
-                                        value={customerSearch}
-                                        onChange={(e) => {
-                                            setCustomerSearch(e.target.value);
-                                            setCustomerName(e.target.value);
-                                            setSelectedCustomerId(null);
-                                        }}
-                                        placeholder="Type to search or add new..."
-                                        Icon={User}
-                                    />
-                                    {customerSuggestions.length > 0 && (
-                                        <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-lg mt-1 shadow-lg max-h-40 overflow-y-auto">
-                                            {customerSuggestions.map(c => (
-                                                <li key={c.id} onClick={() => handleSelectCustomer(c)} className="px-4 py-2 hover:bg-gray-600 cursor-pointer">{c.name}</li>
-                                            ))}
-                                        </ul>
-                                    )}
+        <>
+            <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 ${isInvoiceModalOpen ? 'opacity-0 pointer-events-none' : ''}`}>
+                <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                    <header className="p-4 border-b border-gray-700 flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-white">{booking ? 'Edit Booking' : 'New Booking'}</h2>
+                        <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700"><X size={20} /></button>
+                    </header>
+                    
+                    <main className="p-6 space-y-6 overflow-y-auto">
+                        {/* Customer & Group Section */}
+                        <div className="p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="md:col-span-2">
+                                    <div className="relative">
+                                        <InputField 
+                                            label="Customer Name"
+                                            value={customerSearch}
+                                            onChange={(e) => {
+                                                setCustomerSearch(e.target.value);
+                                                setCustomerName(e.target.value);
+                                                setSelectedCustomerId(null);
+                                            }}
+                                            placeholder="Type to search or add new..."
+                                            Icon={User}
+                                        />
+                                        {customerSuggestions.length > 0 && (
+                                            <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-lg mt-1 shadow-lg max-h-40 overflow-y-auto">
+                                                {customerSuggestions.map(c => (
+                                                    <li key={c.id} onClick={() => handleSelectCustomer(c)} className="px-4 py-2 hover:bg-gray-600 cursor-pointer">{c.name}</li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
                                 </div>
+                                <InputField label="Group Size" type="number" value={groupSize} onChange={e => setGroupSize(e.target.value)} Icon={Users} required={true}/>
                             </div>
-                            <InputField label="Group Size" type="number" value={groupSize} onChange={e => setGroupSize(e.target.value)} Icon={Users} required={true}/>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputField 
-                                label="Phone Number"
-                                type="tel"
-                                value={customerDetails.phone}
-                                onChange={e => setCustomerDetails(prev => ({...prev, phone: e.target.value}))}
-                                placeholder="(123) 456-7890"
-                                Icon={Phone}
-                            />
-                             <InputField 
-                                label="Email Address"
-                                type="email"
-                                value={customerDetails.email}
-                                onChange={e => setCustomerDetails(prev => ({...prev, email: e.target.value}))}
-                                placeholder="customer@example.com"
-                                Icon={Mail}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Booking Items */}
-                    <div className="space-y-4">
-                        {bookingItems.map((item, index) => (
-                            <div key={item.id} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="font-bold text-lg text-blue-400">Activity #{index + 1}</h3>
-                                    {bookingItems.length > 1 && <button onClick={() => handleRemoveItem(item.id)} className="p-1 text-red-400 hover:text-red-300"><Trash2 size={16}/></button>}
-                                </div>
-                                <BookingItemForm 
-                                    item={item} 
-                                    onItemChange={handleItemChange}
-                                    onResourceToggle={handleItemResourceToggle}
-                                    activities={activities}
-                                    resources={resources}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputField 
+                                    label="Phone Number"
+                                    type="tel"
+                                    value={customerDetails.phone}
+                                    onChange={e => setCustomerDetails(prev => ({...prev, phone: e.target.value}))}
+                                    placeholder="(123) 456-7890"
+                                    Icon={Phone}
+                                />
+                                 <InputField 
+                                    label="Email Address"
+                                    type="email"
+                                    value={customerDetails.email}
+                                    onChange={e => setCustomerDetails(prev => ({...prev, email: e.target.value}))}
+                                    placeholder="customer@example.com"
+                                    Icon={Mail}
                                 />
                             </div>
-                        ))}
-                    </div>
-                    <button onClick={handleAddItem} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-semibold">
-                        <PackagePlus size={16} /> Add Activity
-                    </button>
-                    
-                    {/* Add-Ons Section */}
-                    <div>
-                        <h3 className="text-lg font-semibold mb-3">Add-Ons</h3>
-                        <div className="space-y-2">
-                            {addOns.map(addOn => {
-                                const selected = selectedAddOns.find(a => a.addOnId === addOn.id);
-                                return (
-                                <div key={addOn.id} className="flex items-center justify-between bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                                    <div className="flex items-center gap-3">
-                                        <input type="checkbox" checked={!!selected} onChange={() => handleAddOnToggle(addOn.id)} className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600"/>
-                                        <div>
-                                            <p className="font-semibold">{addOn.name}</p>
-                                            <p className="text-xs text-gray-400">${addOn.price}/person</p>
-                                        </div>
-                                    </div>
-                                    {selected && (
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-sm">Qty:</label>
-                                            <input type="number" value={selected.quantity} onChange={(e) => handleAddOnQuantityChange(addOn.id, e.target.value)} className="w-20 bg-gray-700 border border-gray-600 rounded-lg p-1 text-center"/>
-                                        </div>
-                                    )}
-                                </div>
-                            )})}
                         </div>
-                    </div>
 
-                    <div>
-                        <label className="text-sm font-medium text-gray-400 mb-1 block">Booking Notes</label>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Add any special requests or notes for this booking..."
-                            className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-20 resize-none"
-                        />
-                    </div>
-
-                    <PaymentSection 
-                        booking={{groupSize, items: bookingItems, selectedAddOns, payments}}
-                        activities={activities}
-                        addOns={addOns}
-                        onUpdatePayments={setPayments}
-                    />
-
-                </main>
-
-                <footer className="p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-b-2xl">
-                    <div>
-                        {booking && (
-                            <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
-                                <Trash2 size={16} /> Delete
-                            </button>
-                        )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                        {modalError && (
-                            <div className="p-2 bg-red-500/20 border border-red-500/50 text-red-300 rounded-lg text-sm flex items-center gap-2">
-                                <AlertTriangle size={16} />
-                                <span>{modalError}</span>
-                            </div>
-                        )}
-                        <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
+                        {/* Booking Items */}
+                        <div className="space-y-4">
+                            {bookingItems.map((item, index) => (
+                                <div key={item.id} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-lg text-blue-400">Activity #{index + 1}</h3>
+                                        {bookingItems.length > 1 && <button onClick={() => handleRemoveItem(item.id)} className="p-1 text-red-400 hover:text-red-300"><Trash2 size={16}/></button>}
+                                    </div>
+                                    <BookingItemForm 
+                                        item={item} 
+                                        onItemChange={handleItemChange}
+                                        onResourceToggle={handleItemResourceToggle}
+                                        activities={activities}
+                                        resources={resources}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={handleAddItem} className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-semibold">
+                            <PackagePlus size={16} /> Add Activity
                         </button>
-                    </div>
-                </footer>
+                        
+                        {/* Add-Ons Section */}
+                        <div>
+                            <h3 className="text-lg font-semibold mb-3">Add-Ons</h3>
+                            <div className="space-y-2">
+                                {addOns.map(addOn => {
+                                    const selected = selectedAddOns.find(a => a.addOnId === addOn.id);
+                                    const isOneOff = addOn.pricingType === 'oneOff';
+                                    const isVariable = addOn.pricingType === 'variable';
+                                    return (
+                                    <div key={addOn.id} className="flex items-center justify-between bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                                        <div className="flex items-center gap-3">
+                                            <input type="checkbox" checked={!!selected} onChange={() => handleAddOnToggle(addOn.id)} className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600"/>
+                                            <div>
+                                                <p className="font-semibold">{addOn.name}</p>
+                                                <p className="text-xs text-gray-400">
+                                                    {isVariable ? 'Variable Price' : `$${addOn.price} / ${isOneOff ? 'item' : 'person'}`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {selected && (
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-sm">{isVariable ? 'Amount:' : 'Qty:'}</label>
+                                                {isVariable && <span className="text-sm text-gray-400">$</span>}
+                                                <input 
+                                                    type="number" 
+                                                    value={isVariable ? selected.amount : selected.quantity} 
+                                                    onChange={(e) => isVariable ? handleAddOnAmountChange(addOn.id, e.target.value) : handleAddOnQuantityChange(addOn.id, e.target.value)} 
+                                                    className="w-24 bg-gray-700 border border-gray-600 rounded-lg p-1 text-center"
+                                                    placeholder={isVariable ? '0.00' : ''}
+                                                    disabled={!isOneOff && !isVariable} 
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )})}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-400 mb-1 block">Booking Notes</label>
+                            <textarea
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                placeholder="Add any special requests or notes for this booking..."
+                                className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-20 resize-none"
+                            />
+                        </div>
+
+                        <PaymentSection 
+                            booking={currentBookingState}
+                            activities={activities}
+                            addOns={addOns}
+                            onUpdatePayments={setPayments}
+                            onOpenInvoiceModal={() => setIsInvoiceModalOpen(true)}
+                        />
+
+                    </main>
+
+                    <footer className="p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-b-2xl">
+                        <div>
+                            {booking && (
+                                <button onClick={handleDelete} disabled={isSaving} className="text-red-400 hover:text-red-300 font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                                    <Trash2 size={16} /> Delete
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                            {modalError && (
+                                <div className="p-2 bg-red-500/20 border border-red-500/50 text-red-300 rounded-lg text-sm flex items-center gap-2">
+                                    <AlertTriangle size={16} />
+                                    <span>{modalError}</span>
+                                </div>
+                            )}
+                            <button onClick={handleSave} disabled={isSaving || bookingItems.length === 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                {isSaving ? 'Saving...' : (booking ? 'Update Booking' : 'Create Booking')}
+                            </button>
+                        </div>
+                    </footer>
+                </div>
             </div>
-        </div>
+            {isInvoiceModalOpen && (
+                <InvoiceModal
+                    isOpen={isInvoiceModalOpen}
+                    onClose={() => setIsInvoiceModalOpen(false)}
+                    booking={currentBookingState}
+                    activities={activities}
+                    addOns={addOns}
+                    onUpdatePayments={setPayments}
+                />
+            )}
+        </>
     );
 }
 
@@ -3214,17 +3303,11 @@ function CalendarPopup({ selectedDate, setSelectedDate, onClose }) {
     );
 }
 
-function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
+function PaymentSection({ booking, activities, addOns, onUpdatePayments, onOpenInvoiceModal }) {
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('Cash');
     const [showPaymentForm, setShowPaymentForm] = useState(false);
     const [editingPaymentId, setEditingPaymentId] = useState(null);
-    const [giftCardCode, setGiftCardCode] = useState('');
-    const [giftCardInfo, setGiftCardInfo] = useState(null);
-    const [giftCardError, setGiftCardError] = useState(null);
-    const [isCheckingGiftCard, setIsCheckingGiftCard] = useState(false);
-
-    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQGjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
 
     const { totalPrice, totalPaid, balance, depositRequired } = useMemo(() => {
         const price = calculateBookingPrice(booking, activities, addOns) || 0;
@@ -3266,68 +3349,12 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
         };
 
         onUpdatePayments([...booking.payments, newPayment]);
-
-        if (method === 'Invoice') {
-            console.log(`Invoice for $${paidAmount.toFixed(2)} should be generated and emailed.`);
-        }
         
         setAmount('');
         setMethod('Cash');
         setShowPaymentForm(false);
     };
     
-    const handleApplyGiftCard = async () => {
-        if (!giftCardCode) return;
-        setIsCheckingGiftCard(true);
-        setGiftCardError(null);
-        setGiftCardInfo(null);
-
-        try {
-            // This is a MOCK API call. In a real app, this would be a backend endpoint.
-            const response = await fetch(`https://api.giftup.app/gift-cards/${giftCardCode}`, {
-                headers: { 
-                    'Authorization': `Bearer ${giftUpApiKey}`,
-                    'x-giftup-testmode': 'true'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Gift card not found or invalid.');
-            }
-            const data = await response.json();
-            setGiftCardInfo(data);
-        } catch (error) {
-            setGiftCardError(error.message);
-        } finally {
-            setIsCheckingGiftCard(false);
-        }
-    };
-    
-    const handleRedeemGiftCard = async () => {
-        const currentValue = giftCardInfo.currentValue || 0;
-        const amountToRedeem = Math.min(currentValue, balance);
-        if (amountToRedeem <= 0) return;
-
-        // MOCK API call to redeem
-        console.log(`Redeeming ${amountToRedeem} from gift card ${giftCardInfo.code}`);
-        
-        const newPayment = {
-            id: Date.now(),
-            amount: amountToRedeem,
-            method: `Gift Card (...${giftCardInfo.code.slice(-4)})`,
-            date: new Date(),
-            status: 'Completed',
-            giftCardCode: giftCardInfo.code
-        };
-        onUpdatePayments([...booking.payments, newPayment]);
-        
-        setGiftCardCode('');
-        setGiftCardInfo(null);
-        setGiftCardError(null);
-        setShowPaymentForm(false);
-    };
-
-
     const handleUpdatePayment = (id, updatedAmount, updatedMethod) => {
         const newPayments = booking.payments.map(p => 
             p.id === id ? { ...p, amount: parseFloat(updatedAmount), method: updatedMethod } : p
@@ -3350,7 +3377,18 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
         const updatedPayments = booking.payments.filter(p => p.id !== id);
         onUpdatePayments(updatedPayments);
     };
-
+    
+    const handleCheckInvoiceStatus = (paymentId) => {
+        // This is a mock function. In a real app, this would make an API call to Stripe.
+        console.log(`Checking status for invoice related to payment ID: ${paymentId}`);
+        const newPayments = booking.payments.map(p => {
+            if (p.id === paymentId) {
+                return { ...p, status: 'Completed', method: 'Invoice (Paid)' };
+            }
+            return p;
+        });
+        onUpdatePayments(newPayments);
+    };
 
     return (
         <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-4">
@@ -3385,6 +3423,7 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
                                 onUpdate={handleUpdatePayment}
                                 onToggleRefund={handleToggleRefund}
                                 onDelete={handleDeletePayment}
+                                onCheckStatus={handleCheckInvoiceStatus}
                                 editing={editingPaymentId === p.id}
                                 onSetEditing={setEditingPaymentId}
                             />
@@ -3411,7 +3450,7 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
                         </select>
                     </div>
 
-                    {method !== 'Gift Card' ? (
+                    {method !== 'Invoice' ? (
                         <>
                             <InputField label="Amount Paid" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" Icon={DollarSign} />
                             <div className="flex gap-2 justify-end">
@@ -3420,25 +3459,9 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
                             </div>
                         </>
                     ) : (
-                        <div className="space-y-3">
-                             <InputField label="Gift Card Code" value={giftCardCode} onChange={e => setGiftCardCode(e.target.value)} placeholder="Enter code..." Icon={Gift} />
-                             <button onClick={handleApplyGiftCard} disabled={isCheckingGiftCard} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">
-                                 {isCheckingGiftCard ? 'Checking...' : 'Apply Gift Card'}
-                             </button>
-                            {giftCardError && <p className="text-red-400 text-sm">{giftCardError}</p>}
-                            {giftCardInfo && (
-                                <div className="bg-gray-700 p-3 rounded-lg text-sm">
-                                    <p className="font-bold">Gift Card Found!</p>
-                                    <p>Code: ...{giftCardInfo.code.slice(-4)}</p>
-                                    <p>Current Balance: <span className="font-bold text-green-400">${(giftCardInfo.currentValue || 0).toFixed(2)}</span></p>
-                                    <button onClick={handleRedeemGiftCard} className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
-                                        Redeem ${Math.min(giftCardInfo.currentValue || 0, balance).toFixed(2)}
-                                    </button>
-                                </div>
-                            )}
-                             <div className="flex gap-2 justify-end">
-                                <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
-                            </div>
+                         <div className="flex gap-2 justify-end">
+                            <button onClick={() => setShowPaymentForm(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Cancel</button>
+                            <button onClick={onOpenInvoiceModal} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Create Invoice</button>
                         </div>
                     )}
                 </div>
@@ -3447,7 +3470,7 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
     );
 }
 
-function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, editing, onSetEditing }) {
+function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, onCheckStatus, editing, onSetEditing }) {
     const [editAmount, setEditAmount] = useState(payment.amount);
     const [editMethod, setEditMethod] = useState(payment.method);
 
@@ -3473,20 +3496,31 @@ function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, editi
         )
     }
 
+    const isPendingInvoice = payment.method === 'Invoice' && payment.status === 'Pending';
+
     return (
         <li className={`flex justify-between items-center bg-gray-800/50 p-2 rounded-md ${payment.status === 'Refunded' ? 'opacity-50' : ''}`}>
             <div>
                 <span className={payment.status === 'Refunded' ? 'line-through' : ''}>
-                    {payment.method} payment on {payment.date.toLocaleDateString()}
+                    {payment.method} on {payment.date.toLocaleDateString()}
                 </span>
-                {payment.status === 'Refunded' && <span className="text-xs text-red-400 ml-2">(Refunded)</span>}
+                 {payment.status === 'Pending' && <span className="text-xs text-yellow-400 ml-2">(Pending)</span>}
+                 {payment.status === 'Refunded' && <span className="text-xs text-red-400 ml-2">(Refunded)</span>}
             </div>
             <div className="flex items-center gap-1">
                 <span className={`font-semibold text-gray-200 ${payment.status === 'Refunded' ? 'line-through' : ''}`}>${payment.amount.toFixed(2)}</span>
-                <button onClick={() => onSetEditing(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400" title="Edit Payment"><Edit size={14} /></button>
-                <button onClick={() => onToggleRefund(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-orange-400" title={payment.status === 'Refunded' ? 'Mark as Not Refunded' : 'Mark as Refunded'}>
-                    <RotateCcw size={14} />
-                </button>
+                {isPendingInvoice ? (
+                    <button onClick={() => onCheckStatus(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-blue-400" title="Check Invoice Status">
+                        <RefreshCw size={14} />
+                    </button>
+                ) : (
+                    <>
+                        <button onClick={() => onSetEditing(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400" title="Edit Payment"><Edit size={14} /></button>
+                        <button onClick={() => onToggleRefund(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-orange-400" title={payment.status === 'Refunded' ? 'Mark as Not Refunded' : 'Mark as Refunded'}>
+                            <RotateCcw size={14} />
+                        </button>
+                    </>
+                )}
                 <button onClick={() => onDelete(payment.id)} className="p-1.5 hover:bg-gray-700 rounded-md text-red-400" title="Delete Payment">
                     <Trash2 size={14} />
                 </button>
@@ -3496,7 +3530,7 @@ function PaymentHistoryItem({ payment, onUpdate, onToggleRefund, onDelete, editi
 }
 
 // --- Reusable Input Field Component (Updated for Checkbox) ---
-function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength, className = '', checked }) {
+function InputField({ label, type = 'text', value, onChange, placeholder, Icon, required = false, maxLength, className = '', checked, disabled = false }) {
     if (type === 'checkbox') {
         return (
             <div className={`flex items-center gap-2 ${className}`}>
@@ -3522,10 +3556,11 @@ function InputField({ label, type = 'text', value, onChange, placeholder, Icon, 
                     value={value}
                     onChange={onChange}
                     placeholder={placeholder}
-                    className={`w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${Icon ? 'pl-10' : 'pl-3'}`}
+                    className={`w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${Icon ? 'pl-10' : 'pl-3'} disabled:bg-gray-800 disabled:cursor-not-allowed`}
                     required={required}
                     maxLength={maxLength}
                     step={type === 'time' ? 900 : (type === 'number' ? 'any' : undefined)}
+                    disabled={disabled}
                 />
             </div>
         </div>
@@ -3704,6 +3739,168 @@ function DashboardView({ bookings, activities, addOns, resources }) {
                     <Chart title="Revenue Over Period" data={dashboardData.revenueChartData} max={dashboardData.maxRevenue} unit="$" />
                     <Chart title="Guests Over Period" data={dashboardData.guestChartData} max={dashboardData.maxGuests} unit="" />
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// --- Invoice Modal Component ---
+function InvoiceModal({ isOpen, onClose, booking, activities, addOns, onUpdatePayments }) {
+    const [dueDate, setDueDate] = useState('');
+    const [notes, setNotes] = useState('');
+    const [isSending, setIsSending] = useState(false);
+    const [statusMessage, setStatusMessage] = useState(null);
+
+    const companyDetails = `\n\n---\nCodeBreakers Ltd.\nGST#: 118 526 694\nPlease make payment to the following account: 12-3148-0227950-00`;
+
+    useEffect(() => {
+        if (isOpen) {
+            const nextWeek = new Date();
+            nextWeek.setDate(nextWeek.getDate() + 7);
+            setDueDate(nextWeek.toISOString().split('T')[0]);
+            setNotes(`Final balance for your event.${companyDetails}`);
+            setIsSending(false);
+            setStatusMessage(null);
+        }
+    }, [isOpen]);
+
+    const { totalPrice, totalPaid, balance } = useMemo(() => {
+        const price = calculateBookingPrice(booking, activities, addOns) || 0;
+        const paid = (booking.payments || []).filter(p => p.status !== 'Refunded').reduce((acc, p) => acc + p.amount, 0) || 0;
+        return { totalPrice: price, totalPaid: paid, balance: price - paid };
+    }, [booking, activities, addOns]);
+    
+    const gst = totalPrice * (15/115);
+    const subtotalExGst = totalPrice - gst;
+
+    const handleSendInvoice = async () => {
+        setIsSending(true);
+        setStatusMessage({ type: 'info', text: 'Creating and sending invoice...' });
+
+        // MOCK: Simulate API call to Stripe
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const mockInvoiceId = `in_mock_${Date.now()}`;
+        const newPayment = {
+            id: Date.now(),
+            amount: balance,
+            method: 'Invoice',
+            date: new Date(),
+            status: 'Pending',
+            stripeInvoiceId: mockInvoiceId,
+            dueDate: dueDate,
+            notes: notes,
+        };
+
+        onUpdatePayments([...booking.payments, newPayment]);
+        
+        setStatusMessage({ type: 'success', text: `Invoice ${mockInvoiceId} sent successfully!` });
+        setTimeout(() => {
+            onClose();
+        }, 2000);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex justify-center items-center p-4">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <header className="p-4 border-b border-gray-700 flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">Create & Send Stripe Invoice</h2>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700" disabled={isSending}><X size={20} /></button>
+                </header>
+                <main className="p-6 space-y-4 overflow-y-auto">
+                    <div className="p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+                        <h3 className="font-semibold text-lg text-white mb-2">Invoice for {booking.customerName}</h3>
+                        <p className="text-sm text-gray-400">Email: {booking.customerDetails.email || 'Not provided'}</p>
+                    </div>
+
+                    <div>
+                        <h3 className="text-lg font-semibold mb-2 text-gray-200">Invoice Breakdown</h3>
+                        <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 space-y-2 text-sm">
+                            {booking.items.map((item, index) => {
+                                const activity = activities.find(a => a.id === item.activityId);
+                                if (!activity) return null;
+                                const price = activity.price * (activity.type === 'Flexi Time' ? (item.duration / 15) : 1) * booking.groupSize;
+                                return (
+                                    <div key={index} className="flex justify-between items-center">
+                                        <span>{activity.name} (x{booking.groupSize})</span>
+                                        <span>${price.toFixed(2)}</span>
+                                    </div>
+                                );
+                            })}
+                            {booking.selectedAddOns.map((item, index) => {
+                                const addOn = addOns.find(a => a.id === item.addOnId);
+                                if (!addOn) return null;
+                                const isOneOff = addOn.pricingType === 'oneOff';
+                                const isVariable = addOn.pricingType === 'variable';
+                                
+                                let price;
+                                let quantityLabel;
+
+                                if (isVariable) {
+                                    price = Number(item.amount) || 0;
+                                    quantityLabel = `(Tab)`;
+                                } else if (isOneOff) {
+                                    price = addOn.price * item.quantity;
+                                    quantityLabel = `(x${item.quantity})`;
+                                } else { // perPerson
+                                    price = addOn.price * booking.groupSize;
+                                    quantityLabel = `(x${booking.groupSize})`;
+                                }
+                                
+                                return (
+                                    <div key={`addon-${index}`} className="flex justify-between items-center">
+                                        <span>{addOn.name} {quantityLabel}</span>
+                                        <span>${price.toFixed(2)}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="calculation-section bg-gray-900/50 p-4 rounded-lg border border-gray-700 text-sm space-y-1">
+                         <div className="flex justify-between items-center"><span>Subtotal (ex. GST):</span><span>${subtotalExGst.toFixed(2)}</span></div>
+                         <div className="flex justify-between items-center"><span>GST (15%):</span><span>${gst.toFixed(2)}</span></div>
+                         <div className="flex justify-between items-center pt-2 mt-2 border-t border-gray-600 font-bold"><span>Total:</span><span>${totalPrice.toFixed(2)}</span></div>
+                         <div className="flex justify-between items-center text-green-400"><span>Amount Paid:</span><span>-${totalPaid.toFixed(2)}</span></div>
+                         <div className="flex justify-between items-center py-2 mt-2 border-t-2 border-gray-500 font-bold text-lg">
+                            <span>Balance Due:</span>
+                            <span className="text-red-400">${balance.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    
+                    <InputField 
+                        label="Due Date"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                    />
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1 block">Notes (will appear on invoice)</label>
+                        <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="e.g., Final balance for your event..."
+                            className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white h-32"
+                        />
+                    </div>
+                    
+                    {statusMessage && (
+                        <div className={`p-3 rounded-lg text-sm text-center ${statusMessage.type === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                            {statusMessage.text}
+                        </div>
+                    )}
+                </main>
+                <footer className="p-4 border-t border-gray-700">
+                    <button 
+                        onClick={handleSendInvoice} 
+                        disabled={isSending || balance <= 0} 
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2 disabled:bg-gray-500 disabled:cursor-not-allowed"
+                    >
+                        {isSending ? <><RefreshCw size={18} className="animate-spin" /> Sending...</> : <><Send size={18} /> Create & Send Invoice for ${balance.toFixed(2)}</>}
+                    </button>
+                </footer>
             </div>
         </div>
     );
