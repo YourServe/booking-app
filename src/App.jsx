@@ -1772,9 +1772,9 @@ function ActivityManager({ db, appId, activities, areas }) {
         };
 
         if (editingId) {
-            await setDoc(doc(collectionRef, editingId), data);
+            const activityRef = doc(collectionRef, editingId);
+            await updateDoc(activityRef, data);
         } else {
-            // Assign a high order number to new activities to place them at the end
             const highestOrder = activities.reduce((max, act) => Math.max(max, act.order || 0), 0);
             data.order = highestOrder + 1;
             await addDoc(collectionRef, data);
