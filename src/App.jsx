@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -116,6 +116,13 @@ export default function App() {
     const [editingBlock, setEditingBlock] = useState(null);
     const [blockInitialData, setBlockInitialData] = useState({});
 
+    const [activityFilter, setActivityFilter] = useState([]);
+    const [showActivityFilter, setShowActivityFilter] = useState(false);
+
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const searchRef = useRef(null);
+
     // --- Firebase Initialization and Auth ---
     useEffect(() => {
         try {
@@ -166,7 +173,9 @@ export default function App() {
             return onSnapshot(q, (querySnapshot) => {
                 const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 switch (collectionName) {
-                    case 'activities': setActivities(data.sort((a, b) => a.name.localeCompare(b.name))); break;
+                    case 'activities': 
+                        setActivities(data.sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))); 
+                        break;
                     case 'resources': setResources(data.sort((a, b) => a.name.localeCompare(b.name))); break;
                     case 'bookings': 
                         const parsedBookings = data.map(b => ({
@@ -223,6 +232,28 @@ export default function App() {
         return () => unsubscribers.forEach(unsub => unsub());
     }, [isAuthReady, db, appId]);
 
+    // Initialize activity filter when activities are loaded
+    useEffect(() => {
+        if (activities.length > 0) {
+            setActivityFilter(activities.map(a => a.id));
+        }
+    }, [activities]);
+
+    // Click outside handler for search input
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (searchRef.current && !searchRef.current.contains(event.target)) {
+                setShowSearch(false);
+            }
+        }
+        if (showSearch) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showSearch]);
+
     // --- Event Handlers for Modals ---
     const handleOpenBookingModal = (booking = null, initialTime = null, resourceId = null) => {
         setEditingBooking(booking);
@@ -274,75 +305,122 @@ export default function App() {
             return newDate;
         });
     };
+
+    const handleToggleActivityFilter = (activityId) => {
+        setActivityFilter(prev =>
+            prev.includes(activityId)
+                ? prev.filter(id => id !== activityId)
+                : [...prev, activityId]
+        );
+    };
     
-    const shortDate = selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    const longDate = selectedDate.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    const buttonDate = selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
     return (
         <div className="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col">
             <header className="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 p-2 sm:p-3 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Calendar size={18} className="text-white"/>
+                    <div className="w-8 h-8 bg-gray-900 rounded-lg flex-shrink-0 overflow-hidden">
+                        <img src="https://images.squarespace-cdn.com/content/v1/6280b73cb41908114afef4a1/5bb4bba5-e8c3-4c38-b672-08c0b4ee1f4c/serve-social.png" alt="Logo" className="w-full h-full object-cover" />
                     </div>
-                    <h1 className="hidden sm:block text-xl font-bold text-white">Venue Booking</h1>
                 </div>
 
                 {view !== 'settings' && (
                     <div className="flex-grow flex justify-center items-center relative mx-2">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                            <button onClick={() => handleDateChange(-1)} className="p-2 rounded-md hover:bg-gray-700"><ChevronLeft size={20}/></button>
-                            <button onClick={() => setShowCalendar(c => !c)} className="text-base sm:text-lg font-semibold hover:bg-gray-700 px-2 sm:px-3 py-1 rounded-md text-center">
-                                <span className="sm:hidden">{shortDate}</span>
-                                <span className="hidden sm:inline">{longDate}</span>
-                            </button>
-                            <button onClick={() => handleDateChange(1)} className="p-2 rounded-md hover:bg-gray-700"><ChevronRight size={20}/></button>
-                            {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
-                        </div>
+                        {!showSearch ? (
+                             <div className="flex items-center bg-gray-700/50 rounded-lg">
+                                <button onClick={() => handleDateChange(-1)} className="p-2.5 rounded-l-md hover:bg-gray-600"><ChevronLeft size={18}/></button>
+                                <button onClick={() => setShowCalendar(c => !c)} className="text-sm sm:text-base font-semibold hover:bg-gray-600 px-3 sm:px-4 py-2 border-x border-gray-600">
+                                    {buttonDate}
+                                </button>
+                                <button onClick={() => handleDateChange(1)} className="p-2.5 rounded-r-md hover:bg-gray-600"><ChevronRight size={18}/></button>
+                                {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
+                            </div>
+                        ) : (
+                            <div ref={searchRef} className="relative w-full max-w-sm">
+                                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    placeholder="Search bookings..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    autoFocus
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
-                <nav className="flex items-center gap-2 sm:gap-4">
+                <nav className="flex items-center gap-2 sm:gap-3">
                      {view !== 'settings' && (
                          <>
-                             <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg items-center gap-1.5 text-sm font-semibold hidden sm:flex">
+                            {view === 'list' && (
+                                <button onClick={() => setShowSearch(s => !s)} className="p-2.5 rounded-lg hover:bg-gray-700" title="Search">
+                                    <Search size={18} />
+                                </button>
+                            )}
+                             <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2.5 rounded-lg text-sm font-semibold hidden sm:block">
                                  Today
                              </button>
-                              <button
-                                 onClick={() => handleOpenBlockModal(null, selectedDate)}
-                                 className="bg-gray-600 hover:bg-gray-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
-                             >
-                                 <Ban size={16} /> <span className="hidden sm:inline">Block</span>
-                             </button>
+                             <div className="relative">
+                                <button
+                                    onClick={() => setShowActivityFilter(f => !f)}
+                                    className="p-2.5 rounded-lg hover:bg-gray-700"
+                                    title="Filter Activities"
+                                >
+                                    <SlidersHorizontal size={18} />
+                                </button>
+                                {showActivityFilter && (
+                                    <ActivityFilterPopup
+                                        activities={activities}
+                                        selectedActivities={activityFilter}
+                                        onToggleActivity={handleToggleActivityFilter}
+                                        onSelectAll={() => setActivityFilter(activities.map(a => a.id))}
+                                        onDeselectAll={() => setActivityFilter([])}
+                                        onClose={() => setShowActivityFilter(false)}
+                                    />
+                                )}
+                            </div>
+                            {view === 'timeline' && (
+                                <button
+                                    onClick={() => handleOpenBlockModal(null, selectedDate)}
+                                    className="p-2.5 rounded-lg hover:bg-gray-700"
+                                    title="Block Time"
+                                >
+                                    <Ban size={18} />
+                                </button>
+                            )}
                              <button
                                  onClick={() => handleOpenBookingModal(null, selectedDate)}
-                                 className="bg-blue-600 hover:bg-blue-700 text-white p-2 sm:px-3 sm:py-2 rounded-lg flex items-center gap-1.5 text-sm font-semibold"
+                                 className="bg-green-600 hover:bg-green-700 text-white p-2.5 rounded-lg"
+                                 title="New Booking"
                              >
-                                 <Plus size={16} /> <span className="hidden sm:inline">New</span>
+                                 <Plus size={18} />
                              </button>
                          </>
                      )}
-                    <div className="flex items-center gap-2 p-1 bg-gray-800 rounded-lg">
+                    <div className="flex items-center gap-1 p-1 bg-gray-900/50 rounded-lg">
                         <button
                             onClick={() => setView('timeline')}
-                            className={`p-1.5 rounded-md ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
+                            className={`p-2 rounded-md ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
                             aria-label="Timeline View"
                         >
-                            <Calendar size={20} />
+                            <Calendar size={18} />
                         </button>
                          <button
                             onClick={() => setView('list')}
-                            className={`p-1.5 rounded-md ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
+                            className={`p-2 rounded-md ${view === 'list' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
                             aria-label="List View"
                         >
-                            <List size={20} />
+                            <List size={18} />
                         </button>
                         <button
                             onClick={() => setView('settings')}
-                            className={`p-1.5 rounded-md ${view === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
+                            className={`p-2 rounded-md ${view === 'settings' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
                             aria-label="Settings View"
                         >
-                            <Settings size={20} />
+                            <Settings size={18} />
                         </button>
                     </div>
                 </nav>
@@ -370,6 +448,7 @@ export default function App() {
                                 onNewBooking={handleOpenBookingModal}
                                 onNewBlock={handleOpenBlockModal}
                                 selectedDate={selectedDate}
+                                activityFilter={activityFilter}
                             />
                         )}
                         {view === 'list' && (
@@ -382,6 +461,8 @@ export default function App() {
                                  addOns={addOns}
                                  onEditBooking={handleOpenBookingModal}
                                  selectedDate={selectedDate}
+                                 activityFilter={activityFilter}
+                                 searchTerm={searchTerm}
                             />
                         )}
                         {view === 'settings' && (
@@ -436,7 +517,46 @@ export default function App() {
     );
 }
 
-// --- Block Modal Component (NEW) ---
+// --- Activity Filter Popup ---
+function ActivityFilterPopup({ activities, selectedActivities, onToggleActivity, onClose, onSelectAll, onDeselectAll }) {
+    const popupRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (popupRef.current && !popupRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [onClose]);
+
+    return (
+        <div ref={popupRef} className="absolute top-full right-0 mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-4 z-50 w-64">
+            <h3 className="font-bold mb-3 text-white">Filter Activities</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 mb-3">
+                {activities.map(activity => (
+                    <label key={activity.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-700 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={selectedActivities.includes(activity.id)}
+                            onChange={() => onToggleActivity(activity.id)}
+                            className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-blue-600"
+                        />
+                        <span className="text-sm">{activity.name}</span>
+                    </label>
+                ))}
+            </div>
+            <div className="flex justify-between text-xs">
+                <button onClick={onSelectAll} className="hover:underline text-blue-400">Select All</button>
+                <button onClick={onDeselectAll} className="hover:underline text-blue-400">Deselect All</button>
+            </div>
+        </div>
+    );
+}
+
+
+// --- Block Modal Component ---
 function BlockModal({ isOpen, onClose, db, appId, block, initialData, resources, activities }) {
     const [resourceId, setResourceId] = useState('');
     const [startTime, setStartTime] = useState(new Date());
@@ -596,17 +716,17 @@ function BlockModal({ isOpen, onClose, db, appId, block, initialData, resources,
 }
 
 
-// --- List View Component (NEW) ---
-function ListView({ db, appId, activities, resources, bookings, addOns, onEditBooking, selectedDate }) {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortBy, setSortBy] = useState('time'); // 'time', 'customer', 'activity'
+// --- List View Component ---
+function ListView({ db, appId, activities, resources, bookings, addOns, onEditBooking, selectedDate, activityFilter, searchTerm }) {
+    const [sortBy, setSortBy] = useState('time');
+    const [sortDirection, setSortDirection] = useState('asc');
 
     const dailyBookings = useMemo(() => {
         return bookings.flatMap(booking => 
             booking.items
                 .filter(item => {
                     const itemDate = item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime);
-                    return itemDate.toDateString() === selectedDate.toDateString();
+                    return itemDate.toDateString() === selectedDate.toDateString() && activityFilter.includes(item.activityId);
                 })
                 .map(item => ({
                     ...booking,
@@ -615,7 +735,7 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                     startTime: item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime)
                 }))
         );
-    }, [bookings, selectedDate]);
+    }, [bookings, selectedDate, activityFilter]);
 
     const filteredAndSortedBookings = useMemo(() => {
         let filtered = dailyBookings;
@@ -629,20 +749,48 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
         }
 
         return filtered.sort((a, b) => {
+            let compareA, compareB;
+
             switch (sortBy) {
                 case 'customer':
-                    return a.customerName.localeCompare(b.customerName);
+                    compareA = a.customerName.toLowerCase();
+                    compareB = b.customerName.toLowerCase();
+                    break;
                 case 'activity':
-                    const activityA = activities.find(act => act.id === a.item.activityId)?.name || '';
-                    const activityB = activities.find(act => act.id === b.item.activityId)?.name || '';
-                    return activityA.localeCompare(activityB);
+                    compareA = activities.find(act => act.id === a.item.activityId)?.name.toLowerCase() || '';
+                    compareB = activities.find(act => act.id === b.item.activityId)?.name.toLowerCase() || '';
+                    break;
                 case 'time':
                 default:
-                    return a.startTime - b.startTime;
+                    compareA = a.startTime;
+                    compareB = b.startTime;
+                    break;
             }
+
+            if (compareA < compareB) {
+                return sortDirection === 'asc' ? -1 : 1;
+            }
+            if (compareA > compareB) {
+                return sortDirection === 'asc' ? 1 : -1;
+            }
+            return 0;
         });
 
-    }, [dailyBookings, searchTerm, sortBy, activities]);
+    }, [dailyBookings, searchTerm, sortBy, sortDirection, activities]);
+
+    const handleSort = (column) => {
+        if (sortBy === column) {
+            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortBy(column);
+            setSortDirection('asc');
+        }
+    };
+
+    const renderSortArrow = (column) => {
+        if (sortBy !== column) return null;
+        return sortDirection === 'asc' ? <ArrowUp size={14} className="inline-block ml-1" /> : <ArrowDown size={14} className="inline-block ml-1" />;
+    };
 
      const handleCycleStatus = async (bookingId, currentStatus) => {
         const currentStatusIndex = BOOKING_STATUSES.indexOf(currentStatus);
@@ -657,45 +805,24 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
         }
     };
 
+    const SortableHeader = ({ title, columnId, className = '' }) => (
+        <th className={`p-4 text-sm font-semibold text-gray-300 cursor-pointer hover:bg-gray-700 ${className}`} onClick={() => handleSort(columnId)}>
+            <div className="flex items-center gap-2">
+                {title} {renderSortArrow(columnId)}
+            </div>
+        </th>
+    );
 
     return (
         <div className="p-4 sm:p-6 lg:p-8 flex-grow">
             <div className="max-w-7xl mx-auto">
-                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-                    <h1 className="text-2xl font-bold text-white">Bookings for {selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
-                    <div className="w-full sm:w-auto flex gap-2">
-                        <div className="relative flex-grow">
-                            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input 
-                                type="text"
-                                placeholder="Search by name or activity..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                         <div className="relative">
-                            <select
-                                value={sortBy}
-                                onChange={e => setSortBy(e.target.value)}
-                                className="w-full h-full bg-gray-800 border border-gray-700 rounded-lg py-2 pl-3 pr-8 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                            >
-                                <option value="time">Sort by Time</option>
-                                <option value="customer">Sort by Customer</option>
-                                <option value="activity">Sort by Activity</option>
-                            </select>
-                             <ChevronsUpDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                        </div>
-                    </div>
-                </div>
-
                 <div className="bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden">
                     <table className="w-full text-left">
                         <thead className="bg-gray-700/50">
                             <tr>
-                                <th className="p-4 text-sm font-semibold text-gray-300">Time</th>
-                                <th className="p-4 text-sm font-semibold text-gray-300">Customer</th>
-                                <th className="p-4 text-sm font-semibold text-gray-300 hidden md:table-cell">Activity & Resources</th>
+                                <SortableHeader title="Time" columnId="time" />
+                                <SortableHeader title="Customer" columnId="customer" />
+                                <SortableHeader title="Activity & Resources" columnId="activity" className="hidden md:table-cell" />
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Group</th>
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Payment</th>
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Status</th>
@@ -745,7 +872,7 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                             }) : (
                                 <tr>
                                     <td colSpan="7" className="text-center p-8 text-gray-500">
-                                        No bookings found for this day.
+                                        No bookings match your current filters.
                                     </td>
                                 </tr>
                             )}
@@ -977,12 +1104,13 @@ function PaymentStatusIcon({ booking, activities, addOns }) {
 }
 
 
-// --- Timeline View Component (Updated) ---
-function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate }) {
+// --- Timeline View Component ---
+function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate, activityFilter }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
     const [nowLinePos, setNowLinePos] = useState(null);
+    const [editingOrderId, setEditingOrderId] = useState(null);
 
     const isClosed = useMemo(() => {
         return closures.some(c => c.date.toDateString() === selectedDate.toDateString());
@@ -1140,10 +1268,13 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         );
     }, [blocks, selectedDate]);
 
-    const groupedResources = useMemo(() => activities.map(activity => ({
-        ...activity,
-        resources: resources.filter(r => r.activityId === activity.id)
-    })).filter(activity => activity.resources.length > 0), [activities, resources]);
+    const groupedResources = useMemo(() => activities
+        .filter(activity => activityFilter.includes(activity.id))
+        .map(activity => ({
+            ...activity,
+            resources: resources.filter(r => r.activityId === activity.id)
+        }))
+        .filter(activity => activity.resources.length > 0), [activities, resources, activityFilter]);
 
     const isToday = useMemo(() => {
         const today = new Date();
@@ -1257,8 +1388,19 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                 <div ref={leftColumnRef} className="overflow-y-hidden">
                     {groupedResources.map(activity => (
                         <div key={activity.id}>
-                            <div className="h-8 flex items-center px-2 sm:px-4 bg-gray-700 border-b border-t border-gray-600">
-                                <h3 className="text-sm font-bold text-blue-400 truncate">{activity.name}</h3>
+                            <div className="relative h-8 flex items-center px-2 sm:px-4 bg-gray-700 border-b border-t border-gray-600">
+                                <button onClick={() => setEditingOrderId(activity.id)} className="w-full text-left">
+                                    <h3 className="text-sm font-bold text-blue-400 truncate">{activity.name}</h3>
+                                </button>
+                                {editingOrderId === activity.id && (
+                                    <ActivityOrderPopup
+                                        activity={activity}
+                                        activities={activities}
+                                        onClose={() => setEditingOrderId(null)}
+                                        db={db}
+                                        appId={appId}
+                                    />
+                                )}
                             </div>
                             {activity.resources.map(resource => (
                                 <div key={resource.id} className={`flex items-center px-2 sm:px-4 border-b border-gray-700 ${rowHeightClass}`}>
@@ -1403,6 +1545,64 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
     );
 }
 
+// --- Activity Order Popup (NEW) ---
+function ActivityOrderPopup({ activity, activities, onClose, db, appId }) {
+    const popupRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (popupRef.current && !popupRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [onClose]);
+
+    const handleMove = async (direction) => {
+        const sortedActivities = [...activities].sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+        const currentIndex = sortedActivities.findIndex(a => a.id === activity.id);
+
+        const otherIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+        if (otherIndex < 0 || otherIndex >= sortedActivities.length) {
+            return; // Cannot move further
+        }
+
+        const otherActivity = sortedActivities[otherIndex];
+
+        // Ensure order properties exist, defaulting to index if not
+        const currentOrder = activity.order ?? currentIndex;
+        const otherOrder = otherActivity.order ?? otherIndex;
+
+        try {
+            const batch = writeBatch(db);
+            const activityRef = doc(db, `artifacts/${appId}/public/data/activities`, activity.id);
+            batch.update(activityRef, { order: otherOrder });
+
+            const otherActivityRef = doc(db, `artifacts/${appId}/public/data/activities`, otherActivity.id);
+            batch.update(otherActivityRef, { order: currentOrder });
+
+            await batch.commit();
+        } catch (error) {
+            console.error("Failed to reorder activities:", error);
+        } finally {
+            onClose();
+        }
+    };
+
+    return (
+        <div ref={popupRef} className="absolute right-2 top-1/2 -translate-y-1/2 bg-gray-900 border border-gray-600 rounded-md shadow-lg z-20 flex">
+            <button onClick={() => handleMove('up')} className="p-1.5 hover:bg-gray-700 rounded-l-md">
+                <ChevronUp size={16} />
+            </button>
+            <button onClick={() => handleMove('down')} className="p-1.5 hover:bg-gray-700 rounded-r-md border-l border-gray-600">
+                <ChevronDown size={16} />
+            </button>
+        </div>
+    );
+}
+
 
 // --- Settings View Component (Updated Layout) ---
 function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures }) {
@@ -1487,6 +1687,9 @@ function ActivityManager({ db, appId, activities, areas }) {
         if (editingId) {
             await setDoc(doc(collectionRef, editingId), data);
         } else {
+            // Assign a high order number to new activities to place them at the end
+            const highestOrder = activities.reduce((max, act) => Math.max(max, act.order || 0), 0);
+            data.order = highestOrder + 1;
             await addDoc(collectionRef, data);
         }
         resetForm();
@@ -2779,7 +2982,7 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
     const [giftCardError, setGiftCardError] = useState(null);
     const [isCheckingGiftCard, setIsCheckingGiftCard] = useState(false);
 
-    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQGjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
+    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
 
     const { totalPrice, totalPaid, balance, depositRequired } = useMemo(() => {
         const price = calculateBookingPrice(booking, activities, addOns) || 0;
