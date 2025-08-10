@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3 } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -86,7 +86,7 @@ const calculateBookingPrice = (booking, activities, addOns) => {
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [view, setView] = useState('timeline'); // 'timeline', 'list', or 'settings'
+    const [view, setView] = useState('timeline'); // 'dashboard', 'timeline', 'list', or 'settings'
     const [db, setDb] = useState(null);
     const [auth, setAuth] = useState(null);
     const [userId, setUserId] = useState(null);
@@ -346,7 +346,7 @@ export default function App() {
                     <div className="w-8 h-8 bg-gray-900 rounded-lg flex-shrink-0 overflow-hidden">
                         <img src="https://i.imgur.com/MJh4kIq.png" alt="Logo" className="w-full h-full object-cover" />
                     </div>
-                    {view !== 'settings' && (
+                    {view !== 'settings' && view !== 'dashboard' && (
                         <div className="flex items-center gap-2">
                              <div className="flex items-center bg-gray-700/50 rounded-lg">
                                  <button onClick={() => handleDateChange(-1)} className="p-2.5 rounded-l-md hover:bg-gray-600"><ChevronLeft size={18}/></button>
@@ -369,7 +369,7 @@ export default function App() {
                     )}
                 </div>
 
-                {view !== 'settings' && showSearch && (
+                {view !== 'settings' && view !== 'dashboard' && showSearch && (
                     <div className="flex-grow flex justify-center items-center relative mx-2">
                         <div ref={searchRef} className="relative w-full max-w-sm">
                             <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -386,7 +386,7 @@ export default function App() {
                 )}
 
                 <nav className="flex items-center gap-2 sm:gap-3">
-                     {view !== 'settings' && (
+                     {view !== 'settings' && view !== 'dashboard' && (
                          <>
                              {view === 'list' && (
                                  <button onClick={() => setShowSearch(s => !s)} className="p-2.5 rounded-lg hover:bg-gray-700" title="Search">
@@ -430,7 +430,14 @@ export default function App() {
                              </button>
                          </>
                      )}
-                    <div className="flex items-center gap-1 p-1 bg-gray-900/50 rounded-lg">
+                    <div className="flex items-center gap-1 p-1 bg-gray-900/50 rounded-lg shrink-0">
+                        <button
+                            onClick={() => setView('dashboard')}
+                            className={`p-2 rounded-md ${view === 'dashboard' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
+                            aria-label="Dashboard View"
+                        >
+                            <LayoutDashboard size={18} />
+                        </button>
                         <button
                             onClick={() => setView('timeline')}
                             className={`p-2 rounded-md ${view === 'timeline' ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}
@@ -462,6 +469,14 @@ export default function App() {
                 
                 {!loading && !error && (
                     <>
+                        {view === 'dashboard' && (
+                            <DashboardView
+                                bookings={bookings}
+                                activities={activities}
+                                addOns={addOns}
+                                resources={resources}
+                            />
+                        )}
                         {view === 'timeline' && (
                             <TimelineView
                                 db={db}
@@ -3503,6 +3518,174 @@ function InputField({ label, type = 'text', value, onChange, placeholder, Icon, 
                     maxLength={maxLength}
                     step={type === 'time' ? 900 : (type === 'number' ? 'any' : undefined)}
                 />
+            </div>
+        </div>
+    );
+}
+
+// --- Dashboard View ---
+function DashboardView({ bookings, activities, addOns, resources }) {
+    const [period, setPeriod] = useState('7days');
+    const [customStart, setCustomStart] = useState(new Date().toISOString().split('T')[0]);
+    const [customEnd, setCustomEnd] = useState(new Date().toISOString().split('T')[0]);
+
+    const setDateRange = (p) => {
+        const end = new Date();
+        const start = new Date();
+        switch(p) {
+            case 'today':
+                break;
+            case '7days':
+                start.setDate(end.getDate() - 6);
+                break;
+            case '30days':
+                start.setDate(end.getDate() - 29);
+                break;
+            case 'custom':
+                // This case is handled by the inputs directly
+                break;
+            default:
+                break;
+        }
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        return { start, end };
+    }
+
+    const dashboardData = useMemo(() => {
+        const range = period === 'custom' 
+            ? { start: new Date(customStart), end: new Date(customEnd) } 
+            : setDateRange(period);
+        
+        range.start.setHours(0,0,0,0);
+        range.end.setHours(23,59,59,999);
+
+        const filteredBookings = bookings.filter(b => 
+            b.items.some(item => {
+                const itemDate = item.startTime;
+                return itemDate >= range.start && itemDate <= range.end;
+            })
+        );
+
+        let totalRevenue = 0;
+        let totalGuests = 0;
+        const resourceCounts = {};
+        const timeSlotCounts = { "Morning (8-12)": 0, "Afternoon (12-5)": 0, "Evening (5-10)": 0 };
+
+        filteredBookings.forEach(b => {
+            totalRevenue += calculateBookingPrice(b, activities, addOns);
+            totalGuests += Number(b.groupSize || 0);
+            b.items.forEach(item => {
+                const contribution = 1 / item.resourceIds.length;
+                item.resourceIds.forEach(resId => {
+                    const resourceName = resources.find(r => r.id === resId)?.name || 'Unknown Resource';
+                    resourceCounts[resourceName] = (resourceCounts[resourceName] || 0) + contribution;
+                });
+
+                const hour = item.startTime.getHours();
+                if (hour >= 8 && hour < 12) timeSlotCounts["Morning (8-12)"]++;
+                else if (hour >= 12 && hour < 17) timeSlotCounts["Afternoon (12-5)"]++;
+                else if (hour >= 17 && hour < 22) timeSlotCounts["Evening (5-10)"]++;
+            });
+        });
+
+        const revenueChartData = {};
+        const guestChartData = {};
+        let day = new Date(range.start);
+        while(day <= range.end) {
+            const dateStr = day.toISOString().split('T')[0];
+            revenueChartData[dateStr] = 0;
+            guestChartData[dateStr] = 0;
+            day.setDate(day.getDate() + 1);
+        }
+
+        filteredBookings.forEach(b => {
+            const dateStr = b.items[0].startTime.toISOString().split('T')[0];
+            if(revenueChartData.hasOwnProperty(dateStr)) {
+                 revenueChartData[dateStr] += calculateBookingPrice(b, activities, addOns);
+                 guestChartData[dateStr] += Number(b.groupSize || 0);
+            }
+        });
+
+        const maxRevenue = Math.max(...Object.values(revenueChartData));
+        const maxGuests = Math.max(...Object.values(guestChartData));
+
+        return {
+            totalBookings: filteredBookings.length,
+            totalRevenue,
+            totalGuests,
+            avgGuestSize: filteredBookings.length > 0 ? totalGuests / filteredBookings.length : 0,
+            busiestResource: Object.entries(resourceCounts).sort((a,b) => b[1] - a[1])[0] || ['N/A', 0],
+            popularTimeSlot: Object.entries(timeSlotCounts).sort((a,b) => b[1] - a[1])[0] || ['N/A', 0],
+            revenueChartData,
+            guestChartData,
+            maxRevenue,
+            maxGuests
+        };
+
+    }, [bookings, activities, addOns, resources, period, customStart, customEnd]);
+
+
+    const StatCard = ({ title, value, icon: Icon, format }) => (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 flex items-start justify-between">
+            <div>
+                <p className="text-sm text-gray-400">{title}</p>
+                <p className="text-3xl font-bold text-white mt-1">{format ? format(value) : value}</p>
+            </div>
+            <Icon className="text-blue-500" size={24} />
+        </div>
+    );
+
+    const Chart = ({ title, data, max, unit }) => (
+         <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-6">
+            <h3 className="text-xl font-semibold mb-4 text-white">{title}</h3>
+            <div className="flex items-end gap-2 h-64 border-l border-b border-gray-600 pl-4 pb-4">
+                {Object.entries(data).map(([date, value]) => (
+                    <div key={date} className="flex-1 flex flex-col justify-end items-center group relative">
+                        <div className="absolute -top-8 bg-gray-900 px-2 py-1 text-xs rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                            {unit === '$' ? '$' : ''}{value.toFixed(unit === '$' ? 2 : 0)}
+                        </div>
+                        <div className="w-full bg-blue-600 hover:bg-blue-500 rounded-t-md" style={{height: `${max > 0 ? (value / max) * 100 : 0}%`}}></div>
+                        <div className="text-xs text-gray-400 mt-2 transform -rotate-45 whitespace-nowrap">{new Date(date + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="p-4 sm:p-6 lg:p-8 flex-grow">
+            <div className="max-w-7xl mx-auto space-y-8">
+                <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => setPeriod('today')} className={`px-4 py-2 text-sm rounded-lg ${period === 'today' ? 'bg-blue-600' : 'bg-gray-700'} `}>Today</button>
+                    <button onClick={() => setPeriod('7days')} className={`px-4 py-2 text-sm rounded-lg ${period === '7days' ? 'bg-blue-600' : 'bg-gray-700'} `}>Last 7 Days</button>
+                    <button onClick={() => setPeriod('30days')} className={`px-4 py-2 text-sm rounded-lg ${period === '30days' ? 'bg-blue-600' : 'bg-gray-700'} `}>Last 30 Days</button>
+                    <div className="flex items-center gap-2 bg-gray-700 rounded-lg p-2 ml-4">
+                        <input type="date" value={customStart} onChange={e => {setCustomStart(e.target.value); setPeriod('custom')}} className="bg-gray-800 text-sm p-1 rounded-md border border-gray-600"/>
+                        <span>to</span>
+                        <input type="date" value={customEnd} onChange={e => {setCustomEnd(e.target.value); setPeriod('custom')}} className="bg-gray-800 text-sm p-1 rounded-md border border-gray-600"/>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+                    <div className="md:col-span-3 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <StatCard title="Total Revenue" value={dashboardData.totalRevenue} icon={DollarSign} format={(v) => `$${v.toFixed(2)}`} />
+                        <StatCard title="Total Bookings" value={dashboardData.totalBookings} icon={ShoppingCart} />
+                        <StatCard title="Total Guests" value={dashboardData.totalGuests} icon={Users} />
+                        <StatCard title="Avg. Guest Size" value={dashboardData.avgGuestSize} icon={Users} format={(v) => v.toFixed(1)} />
+                    </div>
+                    <div className="md:col-span-3 lg:col-span-2 grid grid-cols-1 gap-6">
+                         <StatCard title="Busiest Resource" value={dashboardData.busiestResource[0]} icon={TrendingUp} />
+                         <StatCard title="Popular Time Slot" value={dashboardData.popularTimeSlot[0]} icon={Clock} />
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <Chart title="Revenue Over Period" data={dashboardData.revenueChartData} max={dashboardData.maxRevenue} unit="$" />
+                    <Chart title="Guests Over Period" data={dashboardData.guestChartData} max={dashboardData.maxGuests} unit="" />
+                </div>
             </div>
         </div>
     );
