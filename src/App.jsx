@@ -321,13 +321,10 @@ export default function App() {
             <header className="bg-gray-800/80 backdrop-blur-md border-b border-gray-700 p-2 sm:p-3 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-gray-900 rounded-lg flex-shrink-0 overflow-hidden">
-                        <img src="https://images.squarespace-cdn.com/content/v1/6280b73cb41908114afef4a1/5bb4bba5-e8c3-4c38-b672-08c0b4ee1f4c/serve-social.png" alt="Logo" className="w-full h-full object-cover" />
+                        <img src="https://i.imgur.com/MJh4kIq.png" alt="Logo" className="w-full h-full object-cover" />
                     </div>
-                </div>
-
-                {view !== 'settings' && (
-                    <div className="flex-grow flex justify-center items-center relative mx-2">
-                        {!showSearch ? (
+                    {view !== 'settings' && (
+                        <div className="flex items-center gap-2">
                              <div className="flex items-center bg-gray-700/50 rounded-lg">
                                 <button onClick={() => handleDateChange(-1)} className="p-2.5 rounded-l-md hover:bg-gray-600"><ChevronLeft size={18}/></button>
                                 <button onClick={() => setShowCalendar(c => !c)} className="text-sm sm:text-base font-semibold hover:bg-gray-600 px-3 sm:px-4 py-2 border-x border-gray-600">
@@ -336,19 +333,26 @@ export default function App() {
                                 <button onClick={() => handleDateChange(1)} className="p-2.5 rounded-r-md hover:bg-gray-600"><ChevronRight size={18}/></button>
                                 {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
                             </div>
-                        ) : (
-                            <div ref={searchRef} className="relative w-full max-w-sm">
-                                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                <input
-                                    type="text"
-                                    placeholder="Search bookings..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    autoFocus
-                                />
-                            </div>
-                        )}
+                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2.5 rounded-lg text-sm font-semibold hidden sm:block">
+                                 Today
+                             </button>
+                        </div>
+                    )}
+                </div>
+
+                {view !== 'settings' && showSearch && (
+                    <div className="flex-grow flex justify-center items-center relative mx-2">
+                        <div ref={searchRef} className="relative w-full max-w-sm">
+                            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            <input
+                                type="text"
+                                placeholder="Search bookings..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 pl-10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -360,9 +364,6 @@ export default function App() {
                                     <Search size={18} />
                                 </button>
                             )}
-                             <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2.5 rounded-lg text-sm font-semibold hidden sm:block">
-                                 Today
-                             </button>
                              <div className="relative">
                                 <button
                                     onClick={() => setShowActivityFilter(f => !f)}
@@ -824,9 +825,9 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                 <SortableHeader title="Customer" columnId="customer" />
                                 <SortableHeader title="Activity & Resources" columnId="activity" className="hidden md:table-cell" />
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Group</th>
+                                <th className="p-4 text-sm font-semibold text-gray-300 text-center">Info</th>
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Payment</th>
                                 <th className="p-4 text-sm font-semibold text-gray-300 text-center">Status</th>
-                                <th className="p-4 text-sm font-semibold text-gray-300 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -835,7 +836,7 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                 const fullBooking = bookings.find(fb => fb.id === b.bookingId);
                                 
                                 return (
-                                    <tr key={`${b.bookingId}-${b.item.id}-${index}`} className="border-t border-gray-700 hover:bg-gray-700/40">
+                                    <tr key={`${b.bookingId}-${b.item.id}-${index}`} className="border-t border-gray-700 hover:bg-gray-700/40 cursor-pointer" onClick={() => onEditBooking(fullBooking)}>
                                         <td className="p-4 font-medium">{b.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                         <td className="p-4 font-semibold">{b.customerName}</td>
                                         <td className="p-4 hidden md:table-cell">
@@ -849,6 +850,12 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                                 <Users size={14}/> <span>{b.groupSize}</span>
                                             </div>
                                         </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex items-center justify-center gap-3">
+                                                {b.notes && <FileText size={16} className="text-gray-400" title={b.notes} />}
+                                                {b.selectedAddOns && b.selectedAddOns.length > 0 && <ShoppingCart size={16} className="text-gray-400" title="Has Add-ons" />}
+                                            </div>
+                                        </td>
                                         <td className="p-4">
                                             <div className="flex justify-center">
                                                  <PaymentStatusIcon booking={fullBooking} activities={activities} addOns={addOns} />
@@ -856,15 +863,10 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                         </td>
                                         <td className="p-4 text-center">
                                             <button 
-                                                onClick={() => handleCycleStatus(b.bookingId, b.status)}
+                                                onClick={(e) => { e.stopPropagation(); handleCycleStatus(b.bookingId, b.status); }}
                                                 className={`text-xs font-bold py-1 px-3 rounded-full border ${BOOKING_STATUS_COLORS[b.status]}`}
                                             >
                                                 {b.status}
-                                            </button>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <button onClick={() => onEditBooking(fullBooking)} className="p-2 hover:bg-gray-600 rounded-md text-gray-300">
-                                                <Edit size={16} />
                                             </button>
                                         </td>
                                     </tr>
@@ -2982,7 +2984,7 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
     const [giftCardError, setGiftCardError] = useState(null);
     const [isCheckingGiftCard, setIsCheckingGiftCard] = useState(false);
 
-    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
+    const giftUpApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NWU3NWRjYy05OTA3LTRmZjAtODg3ZS03MWQ3NzM4N2JiNjciLCJzdWIiOiJsb2dhbkBjb2RlYnJlYWtlcnMubnoiLCJleHAiOjIwNzAyNjIwOTIsImlzcyI6Imh0dHBzOi8vZ2lmdHVwLmFwcC8iLCJhdWQiOiJodHRwczovL2dpZnR1cC5hcHAvIn0.hdh9gQGjCecEOK31KQJjdlcwWsFehkzhwjy4azKyB6A";
 
     const { totalPrice, totalPaid, balance, depositRequired } = useMemo(() => {
         const price = calculateBookingPrice(booking, activities, addOns) || 0;
