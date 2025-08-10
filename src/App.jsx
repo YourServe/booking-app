@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -93,6 +93,7 @@ export default function App() {
     const [appId] = useState('default-app-id'); // Hardcoded for persistence
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showCalendar, setShowCalendar] = useState(false);
+    const [jumpToNow, setJumpToNow] = useState(false);
 
     const [activities, setActivities] = useState([]);
     const [resources, setResources] = useState([]);
@@ -326,14 +327,20 @@ export default function App() {
                     {view !== 'settings' && (
                         <div className="flex items-center gap-2">
                              <div className="flex items-center bg-gray-700/50 rounded-lg">
-                                <button onClick={() => handleDateChange(-1)} className="p-2.5 rounded-l-md hover:bg-gray-600"><ChevronLeft size={18}/></button>
-                                <button onClick={() => setShowCalendar(c => !c)} className="text-sm sm:text-base font-semibold hover:bg-gray-600 px-3 sm:px-4 py-2 border-x border-gray-600">
-                                    {buttonDate}
-                                </button>
-                                <button onClick={() => handleDateChange(1)} className="p-2.5 rounded-r-md hover:bg-gray-600"><ChevronRight size={18}/></button>
-                                {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
-                            </div>
-                            <button onClick={() => setSelectedDate(new Date())} className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2.5 rounded-lg text-sm font-semibold hidden sm:block">
+                                 <button onClick={() => handleDateChange(-1)} className="p-2.5 rounded-l-md hover:bg-gray-600"><ChevronLeft size={18}/></button>
+                                 <button onClick={() => setShowCalendar(c => !c)} className="text-sm sm:text-base font-semibold hover:bg-gray-600 px-3 sm:px-4 py-2 border-x border-gray-600">
+                                     {buttonDate}
+                                 </button>
+                                 <button onClick={() => handleDateChange(1)} className="p-2.5 rounded-r-md hover:bg-gray-600"><ChevronRight size={18}/></button>
+                                 {showCalendar && <CalendarPopup selectedDate={selectedDate} setSelectedDate={setSelectedDate} onClose={() => setShowCalendar(false)} />}
+                             </div>
+                            <button 
+                                onClick={() => {
+                                    setSelectedDate(new Date());
+                                    setJumpToNow(true);
+                                }} 
+                                className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-2.5 rounded-lg text-sm font-semibold hidden sm:block"
+                            >
                                  Today
                              </button>
                         </div>
@@ -359,39 +366,39 @@ export default function App() {
                 <nav className="flex items-center gap-2 sm:gap-3">
                      {view !== 'settings' && (
                          <>
-                            {view === 'list' && (
-                                <button onClick={() => setShowSearch(s => !s)} className="p-2.5 rounded-lg hover:bg-gray-700" title="Search">
-                                    <Search size={18} />
-                                </button>
-                            )}
+                             {view === 'list' && (
+                                 <button onClick={() => setShowSearch(s => !s)} className="p-2.5 rounded-lg hover:bg-gray-700" title="Search">
+                                     <Search size={18} />
+                                 </button>
+                             )}
                              <div className="relative">
-                                <button
-                                    onClick={() => setShowActivityFilter(f => !f)}
-                                    className="p-2.5 rounded-lg hover:bg-gray-700"
-                                    title="Filter Activities"
-                                >
-                                    <SlidersHorizontal size={18} />
-                                </button>
-                                {showActivityFilter && (
-                                    <ActivityFilterPopup
-                                        activities={activities}
-                                        selectedActivities={activityFilter}
-                                        onToggleActivity={handleToggleActivityFilter}
-                                        onSelectAll={() => setActivityFilter(activities.map(a => a.id))}
-                                        onDeselectAll={() => setActivityFilter([])}
-                                        onClose={() => setShowActivityFilter(false)}
-                                    />
-                                )}
-                            </div>
-                            {view === 'timeline' && (
-                                <button
-                                    onClick={() => handleOpenBlockModal(null, selectedDate)}
-                                    className="p-2.5 rounded-lg hover:bg-gray-700"
-                                    title="Block Time"
-                                >
-                                    <Ban size={18} />
-                                </button>
-                            )}
+                                 <button
+                                     onClick={() => setShowActivityFilter(f => !f)}
+                                     className="p-2.5 rounded-lg hover:bg-gray-700"
+                                     title="Filter Activities"
+                                 >
+                                     <SlidersHorizontal size={18} />
+                                 </button>
+                                 {showActivityFilter && (
+                                     <ActivityFilterPopup
+                                         activities={activities}
+                                         selectedActivities={activityFilter}
+                                         onToggleActivity={handleToggleActivityFilter}
+                                         onSelectAll={() => setActivityFilter(activities.map(a => a.id))}
+                                         onDeselectAll={() => setActivityFilter([])}
+                                         onClose={() => setShowActivityFilter(false)}
+                                     />
+                                 )}
+                             </div>
+                             {view === 'timeline' && (
+                                 <button
+                                     onClick={() => handleOpenBlockModal(null, selectedDate)}
+                                     className="p-2.5 rounded-lg hover:bg-gray-700"
+                                     title="Block Time"
+                                 >
+                                     <Ban size={18} />
+                                 </button>
+                             )}
                              <button
                                  onClick={() => handleOpenBookingModal(null, selectedDate)}
                                  className="bg-green-600 hover:bg-green-700 text-white p-2.5 rounded-lg"
@@ -450,6 +457,8 @@ export default function App() {
                                 onNewBlock={handleOpenBlockModal}
                                 selectedDate={selectedDate}
                                 activityFilter={activityFilter}
+                                jumpToNow={jumpToNow}
+                                setJumpToNow={setJumpToNow}
                             />
                         )}
                         {view === 'list' && (
@@ -834,9 +843,17 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                             {filteredAndSortedBookings.length > 0 ? filteredAndSortedBookings.map((b, index) => {
                                 const activity = activities.find(a => a.id === b.item.activityId);
                                 const fullBooking = bookings.find(fb => fb.id === b.bookingId);
+                                const hasAddOns = b.selectedAddOns && b.selectedAddOns.length > 0;
                                 
                                 return (
-                                    <tr key={`${b.bookingId}-${b.item.id}-${index}`} className="border-t border-gray-700 hover:bg-gray-700/40 cursor-pointer" onClick={() => onEditBooking(fullBooking)}>
+                                    <tr 
+                                        key={`${b.bookingId}-${b.item.id}-${index}`} 
+                                        className={`border-t border-gray-700 cursor-pointer ${
+                                            hasAddOns 
+                                            ? 'bg-purple-900/20 hover:bg-purple-800/40' 
+                                            : 'hover:bg-gray-700/40'
+                                        }`} 
+                                        onClick={() => onEditBooking(fullBooking)}>
                                         <td className="p-4 font-medium">{b.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
                                         <td className="p-4 font-semibold">{b.customerName}</td>
                                         <td className="p-4 hidden md:table-cell">
@@ -851,9 +868,20 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                             </div>
                                         </td>
                                         <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-3">
+                                            <div className="flex items-center justify-center gap-2">
                                                 {b.notes && <FileText size={16} className="text-gray-400" title={b.notes} />}
-                                                {b.selectedAddOns && b.selectedAddOns.length > 0 && <ShoppingCart size={16} className="text-gray-400" title="Has Add-ons" />}
+                                                {hasAddOns && b.selectedAddOns.map(sa => {
+                                                    const addOn = addOns.find(a => a.id === sa.addOnId);
+                                                    return addOn ? (
+                                                        <AddOnIcon 
+                                                            key={addOn.id} 
+                                                            name={addOn.iconName} 
+                                                            size={16} 
+                                                            className="text-gray-400" 
+                                                            title={`${addOn.name} (x${sa.quantity})`} 
+                                                        />
+                                                    ) : null;
+                                                })}
                                             </div>
                                         </td>
                                         <td className="p-4">
@@ -917,7 +945,7 @@ function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBooki
 
     return (
         <div
-            className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border-2 border-dashed border-gray-600 hover:border-blue-400 group"
+            className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border border-gray-600 hover:border-blue-400 group"
             style={{ left, width }}
             onClick={() => onNewBooking(null, slot.startTime, resource.id)}
         >
@@ -1107,25 +1135,52 @@ function PaymentStatusIcon({ booking, activities, addOns }) {
 
 
 // --- Timeline View Component ---
-function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate, activityFilter }) {
+function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate, activityFilter, jumpToNow, setJumpToNow }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
     const [nowLinePos, setNowLinePos] = useState(null);
     const [editingOrderId, setEditingOrderId] = useState(null);
+    const [zoomLevel, setZoomLevel] = useState(1);
+
+    const slotWidthRem = 4 * zoomLevel;
+
+    // Load and save zoom level from/to localStorage
+    useEffect(() => {
+        const savedZoom = localStorage.getItem('timelineZoomLevel');
+        if (savedZoom) {
+            setZoomLevel(parseFloat(savedZoom));
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('timelineZoomLevel', zoomLevel);
+    }, [zoomLevel]);
+
 
     const isClosed = useMemo(() => {
         return closures.some(c => c.date.toDateString() === selectedDate.toDateString());
     }, [closures, selectedDate]);
+    
+    const isToday = useMemo(() => {
+        const today = new Date();
+        return selectedDate.getFullYear() === today.getFullYear() &&
+               selectedDate.getMonth() === today.getMonth() &&
+               selectedDate.getDate() === today.getDate();
+    }, [selectedDate]);
 
     useEffect(() => {
         const calculateNowLine = () => {
+            if (!isToday) {
+                setNowLinePos(null);
+                return;
+            }
             const now = new Date();
             const startOfDay = new Date(now);
             startOfDay.setHours(8, 0, 0, 0);
             const minutesFromStart = (now.getTime() - startOfDay.getTime()) / 1000 / 60;
             if (minutesFromStart > 0 && minutesFromStart < 15 * 60) {
-                setNowLinePos(`calc(${(minutesFromStart / 15)} * 4rem)`);
+                setNowLinePos(`calc(${(minutesFromStart / 15)} * ${slotWidthRem}rem)`);
             } else {
                 setNowLinePos(null);
             }
@@ -1134,7 +1189,28 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         calculateNowLine();
         const timer = setInterval(calculateNowLine, 60000);
         return () => clearInterval(timer);
-    }, [selectedDate]);
+    }, [selectedDate, isToday, slotWidthRem]);
+
+    // Effect to jump to current time on "Today" button click
+    useEffect(() => {
+        if (jumpToNow && isToday && timelineBodyRef.current) {
+            const now = new Date();
+            const startOfDay = new Date(now);
+            startOfDay.setHours(8, 0, 0, 0);
+            const minutesFromStart = (now.getTime() - startOfDay.getTime()) / 1000 / 60;
+            
+            // 1rem is typically 16px in browsers
+            const scrollPosition = (minutesFromStart / 15) * (slotWidthRem * 16);
+            const viewportWidth = timelineBodyRef.current.offsetWidth;
+            const centeredScrollPosition = scrollPosition - (viewportWidth / 2);
+
+            timelineBodyRef.current.scrollTo({
+                left: centeredScrollPosition,
+                behavior: 'smooth'
+            });
+            setJumpToNow(false); // Reset the trigger
+        }
+    }, [jumpToNow, isToday, setJumpToNow, slotWidthRem]);
 
 
     useEffect(() => {
@@ -1158,18 +1234,18 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         };
     }, []);
 
-    const getBookingItemPosition = (item) => {
+    const getBookingItemPosition = useCallback((item) => {
         const startHour = item.startTime.getHours();
         const startMinute = item.startTime.getMinutes();
         const totalStartMinutes = (startHour - 8) * 60 + startMinute;
         
         const duration = item.duration || (item.endTime.getTime() - item.startTime.getTime()) / 60000;
         
-        const left = `calc(${(totalStartMinutes / 15)} * 4rem)`;
-        const width = `calc(${(duration / 15)} * 4rem - 2px)`;
+        const left = `calc(${(totalStartMinutes / 15)} * ${slotWidthRem}rem)`;
+        const width = `calc(${(duration / 15)} * ${slotWidthRem}rem - 2px)`;
 
         return { left, width };
-    };
+    }, [slotWidthRem]);
     
     const handleCycleStatus = async (booking) => {
         const currentStatusIndex = BOOKING_STATUSES.indexOf(booking.status);
@@ -1249,7 +1325,6 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         }
     };
     
-    const headerHeight = `h-[${ROW_HEIGHT_REM}rem]`;
     const rowHeightClass = `h-10`;
 
     const filteredBookings = useMemo(() => {
@@ -1277,13 +1352,6 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
             resources: resources.filter(r => r.activityId === activity.id)
         }))
         .filter(activity => activity.resources.length > 0), [activities, resources, activityFilter]);
-
-    const isToday = useMemo(() => {
-        const today = new Date();
-        return selectedDate.getFullYear() === today.getFullYear() &&
-               selectedDate.getMonth() === today.getMonth() &&
-               selectedDate.getDate() === today.getDate();
-    }, [selectedDate]);
 
     const unavailableSlots = useMemo(() => {
         const slots = [];
@@ -1384,13 +1452,13 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
 
 
     return (
-        <div className="flex-grow h-[calc(100vh-113px)] flex overflow-hidden">
+        <div className="flex-grow h-[calc(100vh-113px)] flex overflow-hidden relative">
             <div className="w-[110px] sm:w-[140px] flex-shrink-0 z-20 bg-gray-800 border-r border-gray-700 flex flex-col">
-                <div className={`flex-shrink-0 border-b border-gray-700 ${headerHeight}`}></div>
+                <div className="flex-shrink-0 border-b border-gray-700 h-10"></div>
                 <div ref={leftColumnRef} className="overflow-y-hidden">
                     {groupedResources.map(activity => (
                         <div key={activity.id}>
-                            <div className="relative h-8 flex items-center px-2 sm:px-4 bg-gray-700 border-b border-t border-gray-600">
+                            <div className="relative h-8 flex items-center px-2 sm:px-4 bg-gray-700 border-b border-gray-600">
                                 <button onClick={() => setEditingOrderId(activity.id)} className="w-full text-left">
                                     <h3 className="text-sm font-bold text-blue-400 truncate">{activity.name}</h3>
                                 </button>
@@ -1415,9 +1483,9 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
             </div>
             <div ref={timelineBodyRef} className="flex-grow overflow-auto">
                 <div className="relative min-w-max">
-                    <div ref={timeHeaderRef} className={`flex sticky top-0 z-10 bg-gray-800 border-b border-gray-600 ${headerHeight}`}>
+                    <div ref={timeHeaderRef} className="flex sticky top-0 z-10 bg-gray-800 border-b border-gray-600 h-10">
                         {timeSlots.slice(0, -1).map(time => (
-                            <div key={time} className={`w-16 flex-shrink-0 text-center text-xs text-gray-400 flex items-center justify-center border-r border-gray-700`}>
+                            <div key={time} style={{minWidth: `${slotWidthRem}rem`}} className={`flex-shrink-0 text-center text-xs text-gray-400 flex items-center justify-center border-r border-gray-700`}>
                                 {time.endsWith(':00') ? <strong>{time}</strong> : <span className="text-gray-600">·</span>}
                             </div>
                         ))}
@@ -1455,7 +1523,8 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                         timeSlots.slice(0, -1).map((timeStr, i) => (
                                             <div
                                                 key={i}
-                                                className={`w-16 h-full flex-shrink-0 border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
+                                                style={{minWidth: `${slotWidthRem}rem`}}
+                                                className={`flex-shrink-0 h-full border-r ${i % 4 === 3 ? 'border-gray-600' : 'border-gray-700'} hover:bg-blue-500/10 cursor-pointer`}
                                                 onClick={(e) => {
                                                     const time = new Date(selectedDate);
                                                     const [hours, minutes] = timeStr.split(':');
@@ -1542,6 +1611,22 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                         </div>
                     )}
                 </div>
+            </div>
+             <div className="absolute bottom-4 right-4 z-40 flex flex-col gap-2">
+                <button 
+                    onClick={() => setZoomLevel(prev => Math.min(3, prev + 0.25))}
+                    className="bg-gray-700/80 backdrop-blur-md hover:bg-gray-600 text-white p-2 rounded-full shadow-lg"
+                    title="Zoom In"
+                >
+                    <ZoomIn size={20} />
+                </button>
+                <button 
+                    onClick={() => setZoomLevel(prev => Math.max(0.5, prev - 0.25))}
+                    className="bg-gray-700/80 backdrop-blur-md hover:bg-gray-600 text-white p-2 rounded-full shadow-lg"
+                    title="Zoom Out"
+                >
+                    <ZoomOut size={20} />
+                </button>
             </div>
         </div>
     );
@@ -3183,8 +3268,8 @@ function PaymentSection({ booking, activities, addOns, onUpdatePayments }) {
                         <div className="space-y-3">
                              <InputField label="Gift Card Code" value={giftCardCode} onChange={e => setGiftCardCode(e.target.value)} placeholder="Enter code..." Icon={Gift} />
                              <button onClick={handleApplyGiftCard} disabled={isCheckingGiftCard} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">
-                                {isCheckingGiftCard ? 'Checking...' : 'Apply Gift Card'}
-                            </button>
+                                 {isCheckingGiftCard ? 'Checking...' : 'Apply Gift Card'}
+                             </button>
                             {giftCardError && <p className="text-red-400 text-sm">{giftCardError}</p>}
                             {giftCardInfo && (
                                 <div className="bg-gray-700 p-3 rounded-lg text-sm">
