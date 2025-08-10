@@ -3569,18 +3569,25 @@ function DashboardView({ bookings, activities, addOns, resources }) {
 
         let totalRevenue = 0;
         let totalGuests = 0;
-        const resourceCounts = {};
+        const activityPopularity = {};
         const timeSlotCounts = { "Morning (8-12)": 0, "Afternoon (12-5)": 0, "Evening (5-10)": 0 };
 
         filteredBookings.forEach(b => {
             totalRevenue += calculateBookingPrice(b, activities, addOns);
             totalGuests += Number(b.groupSize || 0);
             b.items.forEach(item => {
-                const contribution = 1 / item.resourceIds.length;
-                item.resourceIds.forEach(resId => {
-                    const resourceName = resources.find(r => r.id === resId)?.name || 'Unknown Resource';
-                    resourceCounts[resourceName] = (resourceCounts[resourceName] || 0) + contribution;
-                });
+                const activity = activities.find(a => a.id === item.activityId);
+                if (!activity) return;
+
+                if (activity.type === 'Flexi Time') {
+                    activityPopularity[activity.name] = (activityPopularity[activity.name] || 0) + 1;
+                } else { // Fixed Time
+                    const contribution = 1 / item.resourceIds.length;
+                    item.resourceIds.forEach(resId => {
+                        const resourceName = resources.find(r => r.id === resId)?.name || 'Unknown Resource';
+                        activityPopularity[resourceName] = (activityPopularity[resourceName] || 0) + contribution;
+                    });
+                }
 
                 const hour = item.startTime.getHours();
                 if (hour >= 8 && hour < 12) timeSlotCounts["Morning (8-12)"]++;
@@ -3615,7 +3622,7 @@ function DashboardView({ bookings, activities, addOns, resources }) {
             totalRevenue,
             totalGuests,
             avgGuestSize: filteredBookings.length > 0 ? totalGuests / filteredBookings.length : 0,
-            busiestResource: Object.entries(resourceCounts).sort((a,b) => b[1] - a[1])[0] || ['N/A', 0],
+            busiestActivity: Object.entries(activityPopularity).sort((a,b) => b[1] - a[1])[0] || ['N/A', 0],
             popularTimeSlot: Object.entries(timeSlotCounts).sort((a,b) => b[1] - a[1])[0] || ['N/A', 0],
             revenueChartData,
             guestChartData,
@@ -3677,7 +3684,7 @@ function DashboardView({ bookings, activities, addOns, resources }) {
                         <StatCard title="Avg. Guest Size" value={dashboardData.avgGuestSize} icon={Users} format={(v) => v.toFixed(1)} />
                     </div>
                     <div className="md:col-span-3 lg:col-span-2 grid grid-cols-1 gap-6">
-                         <StatCard title="Busiest Resource" value={dashboardData.busiestResource[0]} icon={TrendingUp} />
+                         <StatCard title="Busiest Activity" value={dashboardData.busiestActivity[0]} icon={TrendingUp} />
                          <StatCard title="Popular Time Slot" value={dashboardData.popularTimeSlot[0]} icon={Clock} />
                     </div>
                 </div>
