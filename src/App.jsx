@@ -256,6 +256,25 @@ export default function App() {
         };
     }, [showSearch]);
 
+    const dailyBookings = useMemo(() => {
+        return bookings.filter(booking => 
+            booking.items.some(item => 
+                item.startTime.getFullYear() === selectedDate.getFullYear() &&
+                item.startTime.getMonth() === selectedDate.getMonth() &&
+                item.startTime.getDate() === selectedDate.getDate()
+            )
+        );
+    }, [bookings, selectedDate]);
+
+    const bookingColorMap = useMemo(() => {
+        const multiItemBookings = dailyBookings.filter(b => b.items.length > 1);
+        const map = {};
+        multiItemBookings.forEach((booking, index) => {
+            map[booking.id] = MULTI_BOOKING_COLORS[index % MULTI_BOOKING_COLORS.length];
+        });
+        return map;
+    }, [dailyBookings]);
+
     // --- Event Handlers for Modals ---
     const handleOpenBookingModal = (booking = null, initialTime = null, resourceId = null) => {
         setEditingBooking(booking);
@@ -447,7 +466,7 @@ export default function App() {
                                 appId={appId}
                                 activities={activities}
                                 resources={resources}
-                                bookings={bookings}
+                                bookings={dailyBookings}
                                 blocks={blocks}
                                 addOns={addOns}
                                 resourceLinks={resourceLinks}
@@ -460,6 +479,7 @@ export default function App() {
                                 activityFilter={activityFilter}
                                 jumpToNow={jumpToNow}
                                 setJumpToNow={setJumpToNow}
+                                bookingColorMap={bookingColorMap}
                             />
                         )}
                         {view === 'list' && (
@@ -469,11 +489,13 @@ export default function App() {
                                  activities={activities}
                                  resources={resources}
                                  bookings={bookings}
+                                 dailyBookings={dailyBookings}
                                  addOns={addOns}
                                  onEditBooking={handleOpenBookingModal}
                                  selectedDate={selectedDate}
                                  activityFilter={activityFilter}
                                  searchTerm={searchTerm}
+                                 bookingColorMap={bookingColorMap}
                             />
                         )}
                         {view === 'settings' && (
@@ -728,36 +750,29 @@ function BlockModal({ isOpen, onClose, db, appId, block, initialData, resources,
 
 
 // --- List View Component ---
-function ListView({ db, appId, activities, resources, bookings, addOns, onEditBooking, selectedDate, activityFilter, searchTerm }) {
+function ListView({ db, appId, activities, resources, bookings, dailyBookings, addOns, onEditBooking, selectedDate, activityFilter, searchTerm, bookingColorMap }) {
     const [sortBy, setSortBy] = useState('time');
     const [sortDirection, setSortDirection] = useState('asc');
 
-    const dailyBookings = useMemo(() => {
-        const filtered = bookings
+    const filteredAndSortedBookings = useMemo(() => {
+        let filtered = dailyBookings
             .map(booking => {
                 const itemsOnDate = booking.items
-                    .filter(item => {
-                        const itemDate = item.startTime instanceof Timestamp ? item.startTime.toDate() : new Date(item.startTime);
-                        return itemDate.toDateString() === selectedDate.toDateString() && activityFilter.includes(item.activityId);
-                    })
+                    .filter(item => activityFilter.includes(item.activityId))
                     .sort((a, b) => a.startTime - b.startTime);
-
                 return { ...booking, items: itemsOnDate };
             })
             .filter(booking => booking.items.length > 0);
 
         if (searchTerm) {
             const lowerSearchTerm = searchTerm.toLowerCase();
-            return filtered.filter(b =>
+            filtered = filtered.filter(b =>
                 b.customerName.toLowerCase().includes(lowerSearchTerm) ||
                 b.items.some(item => activities.find(a => a.id === item.activityId)?.name.toLowerCase().includes(lowerSearchTerm))
             );
         }
-        return filtered;
-    }, [bookings, selectedDate, activityFilter, searchTerm, activities]);
 
-    const sortedBookings = useMemo(() => {
-        return [...dailyBookings].sort((a, b) => {
+        return filtered.sort((a, b) => {
             const aStartTime = a.items[0].startTime;
             const bStartTime = b.items[0].startTime;
 
@@ -770,7 +785,23 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
             }
             return 0;
         });
-    }, [dailyBookings, sortBy, sortDirection]);
+    }, [dailyBookings, activityFilter, searchTerm, sortBy, sortDirection, activities]);
+    
+    const dailyTotals = useMemo(() => {
+        let totalPeople = 0;
+        let totalPaid = 0;
+
+        filteredAndSortedBookings.forEach(booking => {
+            totalPeople += Number(booking.groupSize || 0);
+            const paidAmount = (booking.payments || [])
+                .filter(p => p.status !== 'Refunded')
+                .reduce((sum, p) => sum + p.amount, 0);
+            totalPaid += paidAmount;
+        });
+
+        return { totalPeople, totalPaid };
+    }, [filteredAndSortedBookings]);
+
 
     const handleSort = (column) => {
         if (sortBy === column) {
@@ -824,9 +855,11 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedBookings.length > 0 ? sortedBookings.map(booking => {
+                            {filteredAndSortedBookings.length > 0 ? filteredAndSortedBookings.map(booking => {
                                 const hasAddOns = booking.selectedAddOns && booking.selectedAddOns.length > 0;
                                 const fullBooking = bookings.find(fb => fb.id === booking.id);
+                                const linkColor = bookingColorMap[booking.id];
+
                                 return (
                                     <React.Fragment key={booking.id}>
                                         {booking.items.map((item, itemIndex) => {
@@ -838,7 +871,8 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                                     className={`border-t border-gray-700 cursor-pointer ${hasAddOns ? 'bg-purple-900/20 hover:bg-purple-800/40' : 'hover:bg-gray-700/40'}`}
                                                     onClick={() => onEditBooking(fullBooking)}
                                                 >
-                                                    <td className={`p-4 font-medium ${isSubItem ? 'pl-8 border-l-2 border-gray-600' : ''}`}>
+                                                    <td className={`p-4 font-medium relative ${isSubItem ? 'pl-8' : ''}`}>
+                                                        {isSubItem && <div className="absolute left-0 top-0 bottom-0 w-1" style={{backgroundColor: linkColor || '#4B5563'}}></div>}
                                                         {item.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </td>
                                                     <td className="p-4 font-semibold">{!isSubItem && booking.customerName}</td>
@@ -898,6 +932,17 @@ function ListView({ db, appId, activities, resources, bookings, addOns, onEditBo
                                 </tr>
                             )}
                         </tbody>
+                        <tfoot className="bg-gray-900/80">
+                            <tr>
+                                <td colSpan="3" className="p-4 text-right text-gray-400 font-normal">Total</td>
+                                <td className="p-4 text-center font-semibold">{dailyTotals.totalPeople}</td>
+                                <td></td>
+                                <td className="p-4 text-center font-semibold text-green-400">
+                                    ${dailyTotals.totalPaid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -1126,7 +1171,7 @@ function PaymentStatusIcon({ booking, activities, addOns }) {
 
 
 // --- Timeline View Component ---
-function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate, activityFilter, jumpToNow, setJumpToNow }) {
+function TimelineView({ db, appId, activities, resources, bookings, blocks, addOns, resourceLinks, areas, scheduleOverrides, closures, onNewBooking, onNewBlock, selectedDate, activityFilter, jumpToNow, setJumpToNow, bookingColorMap }) {
     const timelineBodyRef = useRef(null);
     const leftColumnRef = useRef(null);
     const timeHeaderRef = useRef(null);
@@ -1344,15 +1389,6 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
         }))
         .filter(activity => activity.resources.length > 0), [activities, resources, activityFilter]);
 
-    const bookingColorMap = useMemo(() => {
-        const multiItemBookings = filteredBookings.filter(b => b.items.length > 1);
-        const map = {};
-        multiItemBookings.forEach((booking, index) => {
-            map[booking.id] = MULTI_BOOKING_COLORS[index % MULTI_BOOKING_COLORS.length];
-        });
-        return map;
-    }, [filteredBookings]);
-
     const unavailableSlots = useMemo(() => {
         const slots = [];
         const addedSlots = new Set();
@@ -1501,7 +1537,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                         </div>
                     )}
 
-                    {!isClosed && groupedResources.map((activity, activityIndex) => {
+                    {!isClosed && groupedResources.map((activity) => {
                         return (
                             <div key={activity.id}>
                                 <div className="h-8 border-b border-gray-600"></div>
@@ -1659,29 +1695,26 @@ function ActivityOrderPopup({ activity, activities, onClose, db, appId }) {
     }, [onClose]);
 
     const handleMove = async (direction) => {
-        const sortedActivities = [...activities].sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+        const sortedActivities = [...activities].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
         const currentIndex = sortedActivities.findIndex(a => a.id === activity.id);
+        const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
 
-        const otherIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-
-        if (otherIndex < 0 || otherIndex >= sortedActivities.length) {
-            return; // Cannot move further
+        if (newIndex < 0 || newIndex >= sortedActivities.length) {
+            onClose();
+            return;
         }
 
-        const otherActivity = sortedActivities[otherIndex];
-
-        // Ensure order properties exist, defaulting to index if not
-        const currentOrder = activity.order ?? currentIndex;
-        const otherOrder = otherActivity.order ?? otherIndex;
+        const [movedActivity] = sortedActivities.splice(currentIndex, 1);
+        sortedActivities.splice(newIndex, 0, movedActivity);
 
         try {
             const batch = writeBatch(db);
-            const activityRef = doc(db, `artifacts/${appId}/public/data/activities`, activity.id);
-            batch.update(activityRef, { order: otherOrder });
-
-            const otherActivityRef = doc(db, `artifacts/${appId}/public/data/activities`, otherActivity.id);
-            batch.update(otherActivityRef, { order: currentOrder });
-
+            sortedActivities.forEach((act, index) => {
+                const activityRef = doc(db, `artifacts/${appId}/public/data/activities`, act.id);
+                if (act.order !== index) {
+                     batch.update(activityRef, { order: index });
+                }
+            });
             await batch.commit();
         } catch (error) {
             console.error("Failed to reorder activities:", error);
