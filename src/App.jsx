@@ -178,7 +178,9 @@ export default function App() {
                     case 'activities': 
                         setActivities(data.sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))); 
                         break;
-                    case 'resources': setResources(data.sort((a, b) => a.name.localeCompare(b.name))); break;
+                    case 'resources': 
+                        setResources(data.sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))); 
+                        break;
                     case 'bookings': 
                         const parsedBookings = data.map(b => ({
                             ...b,
@@ -267,7 +269,7 @@ export default function App() {
     }, [bookings, selectedDate]);
 
     const bookingColorMap = useMemo(() => {
-        const multiItemBookings = dailyBookings.filter(b => b.items.length > 1);
+        const multiItemBookings = dailyBookings.filter(b => b.items.length > 1 || b.items.some(item => item.resourceIds.length > 1));
         const map = {};
         multiItemBookings.forEach((booking, index) => {
             map[booking.id] = MULTI_BOOKING_COLORS[index % MULTI_BOOKING_COLORS.length];
@@ -859,23 +861,23 @@ function ListView({ db, appId, activities, resources, bookings, dailyBookings, a
                                 const hasAddOns = booking.selectedAddOns && booking.selectedAddOns.length > 0;
                                 const fullBooking = bookings.find(fb => fb.id === booking.id);
                                 const linkColor = bookingColorMap[booking.id];
+                                const isMultiItem = booking.items.length > 1 || booking.items.some(item => item.resourceIds.length > 1);
 
                                 return (
                                     <React.Fragment key={booking.id}>
                                         {booking.items.map((item, itemIndex) => {
                                             const activity = activities.find(a => a.id === item.activityId);
-                                            const isSubItem = itemIndex > 0;
                                             return (
                                                 <tr
                                                     key={item.id || itemIndex}
                                                     className={`border-t border-gray-700 cursor-pointer ${hasAddOns ? 'bg-purple-900/20 hover:bg-purple-800/40' : 'hover:bg-gray-700/40'}`}
                                                     onClick={() => onEditBooking(fullBooking)}
                                                 >
-                                                    <td className={`p-4 font-medium relative ${isSubItem ? 'pl-8' : ''}`}>
-                                                        {isSubItem && <div className="absolute left-0 top-0 bottom-0 w-1" style={{backgroundColor: linkColor || '#4B5563'}}></div>}
+                                                    <td className="p-4 font-medium relative">
+                                                        {isMultiItem && <div className="absolute left-0 top-0 bottom-0 w-1" style={{backgroundColor: linkColor || '#4B5563'}}></div>}
                                                         {item.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </td>
-                                                    <td className="p-4 font-semibold">{!isSubItem && booking.customerName}</td>
+                                                    <td className="p-4 font-semibold">{itemIndex === 0 && booking.customerName}</td>
                                                     <td className="p-4 hidden md:table-cell">
                                                         <p className="font-medium">{activity?.name || 'N/A'}</p>
                                                         <p className="text-xs text-gray-400">
@@ -883,14 +885,14 @@ function ListView({ db, appId, activities, resources, bookings, dailyBookings, a
                                                         </p>
                                                     </td>
                                                     <td className="p-4 text-center">
-                                                        {!isSubItem && (
+                                                        {itemIndex === 0 && (
                                                             <div className="flex items-center justify-center gap-1.5 bg-gray-700 px-2 py-1 rounded-full w-fit mx-auto">
                                                                 <Users size={14} /> <span>{booking.groupSize}</span>
                                                             </div>
                                                         )}
                                                     </td>
                                                     <td className="p-4 text-center">
-                                                        {!isSubItem && (
+                                                        {itemIndex === 0 && (
                                                             <div className="flex items-center justify-center gap-2">
                                                                 {booking.notes && <FileText size={16} className="text-gray-400" title={booking.notes} />}
                                                                 {hasAddOns && booking.selectedAddOns.map(sa => {
@@ -903,14 +905,14 @@ function ListView({ db, appId, activities, resources, bookings, dailyBookings, a
                                                         )}
                                                     </td>
                                                     <td className="p-4">
-                                                        {!isSubItem && (
+                                                        {itemIndex === 0 && (
                                                             <div className="flex justify-center">
                                                                 <PaymentStatusIcon booking={fullBooking} activities={activities} addOns={addOns} />
                                                             </div>
                                                         )}
                                                     </td>
                                                     <td className="p-4 text-center">
-                                                        {!isSubItem && (
+                                                        {itemIndex === 0 && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleCycleStatus(booking.id, booking.status); }}
                                                                 className={`text-xs font-bold py-1 px-3 rounded-full border ${BOOKING_STATUS_COLORS[booking.status]}`}
@@ -981,7 +983,7 @@ function EditableSlot({ slot, resource, onNewBooking, onUpdateTimeSlot, getBooki
 
     return (
         <div
-            className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/30 hover:bg-blue-500/20 border border-gray-600 hover:border-blue-400 group"
+            className="absolute top-1 bottom-1 flex items-center justify-center p-1 rounded-md z-5 cursor-pointer bg-gray-700/90 hover:bg-blue-500/20 border border-gray-600 hover:border-blue-400 group"
             style={{ left, width }}
             onClick={() => onNewBooking(null, slot.startTime, resource.id)}
         >
@@ -1177,6 +1179,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
     const timeHeaderRef = useRef(null);
     const [nowLinePos, setNowLinePos] = useState(null);
     const [editingOrderId, setEditingOrderId] = useState(null);
+    const [editingResourceOrderId, setEditingResourceOrderId] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(1);
 
     const slotWidthRem = 4 * zoomLevel;
@@ -1490,7 +1493,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
 
     return (
         <div className="flex-grow h-[calc(100vh-113px)] flex overflow-hidden relative">
-            <div className="w-[110px] sm:w-[140px] flex-shrink-0 z-20 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <div className="w-[80px] flex-shrink-0 z-20 bg-gray-800 border-r border-gray-700 flex flex-col">
                 <div className="flex-shrink-0 border-b border-gray-700 h-10"></div>
                 <div ref={leftColumnRef} className="overflow-y-hidden">
                     {groupedResources.map(activity => (
@@ -1510,8 +1513,20 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                 )}
                             </div>
                             {activity.resources.map(resource => (
-                                <div key={resource.id} className={`flex items-center px-2 sm:px-4 border-b border-gray-700 ${rowHeightClass}`}>
-                                    <span className="text-gray-300 truncate">{resource.abbreviation || resource.name}</span>
+                                <div key={resource.id} className={`flex items-center px-2 sm:px-4 border-b border-gray-700 ${rowHeightClass} relative`}>
+                                    <button onClick={() => setEditingResourceOrderId(resource.id)} className="w-full text-left">
+                                        <span className="text-gray-300 truncate">{resource.abbreviation || resource.name}</span>
+                                    </button>
+                                    {editingResourceOrderId === resource.id && (
+                                        <ResourceOrderPopup
+                                            resource={resource}
+                                            resources={resources}
+                                            activity={activity}
+                                            onClose={() => setEditingResourceOrderId(null)}
+                                            db={db}
+                                            appId={appId}
+                                        />
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -1582,7 +1597,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                                 .map(item => {
                                                     const { left, width } = getBookingItemPosition(item);
                                                     const isPrimaryBlock = item.resourceIds[0] === resource.id;
-                                                    const isMultiItem = booking.items.length > 1;
+                                                    const isMultiItem = booking.items.length > 1 || booking.items.some(item => item.resourceIds.length > 1);
                                                     const multiItemBorderColor = isMultiItem ? bookingColorMap[booking.id] : undefined;
 
                                                     const itemStyle = { left, width, minWidth: '4rem' };
@@ -1632,10 +1647,9 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                                     <div
                                                         key={block.id}
                                                         onClick={() => onNewBlock(block)}
-                                                        className="absolute top-1 bottom-1 bg-gray-700/80 rounded-md z-5 p-2 flex items-center cursor-pointer border border-gray-600"
+                                                        className="absolute top-1 bottom-1 bg-red-500/50 rounded-md z-5 p-2 flex items-center cursor-pointer border border-red-400/50"
                                                         style={{ left, width }}
                                                     >
-                                                        <div className="h-full w-full bg-stripes"></div>
                                                         <p className="text-xs font-semibold text-white truncate absolute left-2 right-2">{block.reason || 'Blocked'}</p>
                                                     </div>
                                                 );
@@ -1643,8 +1657,7 @@ function TimelineView({ db, appId, activities, resources, bookings, blocks, addO
                                             {unavailableSlots.filter(slot => slot.resourceId === resource.id).map(slot => {
                                                 const { left, width } = getBookingItemPosition(slot);
                                                 return (
-                                                    <div key={slot.id} className="absolute top-1 bottom-1 bg-gray-700/50 rounded-md z-5" style={{ left, width }}>
-                                                        <div className="h-full w-full bg-stripes"></div>
+                                                    <div key={slot.id} className="absolute top-1 bottom-1 bg-red-500/50 rounded-md z-5" style={{ left, width }}>
                                                     </div>
                                                 )
                                             })}
@@ -1719,6 +1732,64 @@ function ActivityOrderPopup({ activity, activities, onClose, db, appId }) {
             await batch.commit();
         } catch (error) {
             console.error("Failed to reorder activities:", error);
+        } finally {
+            onClose();
+        }
+    };
+
+    return (
+        <div ref={popupRef} className="absolute right-2 top-1/2 -translate-y-1/2 bg-gray-900 border border-gray-600 rounded-md shadow-lg z-20 flex">
+            <button onClick={() => handleMove('up')} className="p-1.5 hover:bg-gray-700 rounded-l-md">
+                <ChevronUp size={16} />
+            </button>
+            <button onClick={() => handleMove('down')} className="p-1.5 hover:bg-gray-700 rounded-r-md border-l border-gray-600">
+                <ChevronDown size={16} />
+            </button>
+        </div>
+    );
+}
+
+// --- Resource Order Popup (NEW) ---
+function ResourceOrderPopup({ resource, resources, activity, onClose, db, appId }) {
+    const popupRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (popupRef.current && !popupRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [onClose]);
+
+    const handleMove = async (direction) => {
+        const resourcesInActivity = resources
+            .filter(r => r.activityId === activity.id)
+            .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name));
+        
+        const currentIndex = resourcesInActivity.findIndex(r => r.id === resource.id);
+        const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+        if (newIndex < 0 || newIndex >= resourcesInActivity.length) {
+            onClose();
+            return;
+        }
+
+        const [movedResource] = resourcesInActivity.splice(currentIndex, 1);
+        resourcesInActivity.splice(newIndex, 0, movedResource);
+
+        try {
+            const batch = writeBatch(db);
+            resourcesInActivity.forEach((res, index) => {
+                const resourceRef = doc(db, `artifacts/${appId}/public/data/resources`, res.id);
+                if (res.order !== index) {
+                     batch.update(resourceRef, { order: index });
+                }
+            });
+            await batch.commit();
+        } catch (error) {
+            console.error("Failed to reorder resources:", error);
         } finally {
             onClose();
         }
@@ -1938,7 +2009,17 @@ function ResourceManager({ db, appId, resources, activities }) {
         e.preventDefault();
         if (!name || !capacity || !activityId || !abbreviation) return;
         const collectionRef = collection(db, `artifacts/${appId}/public/data/resources`);
-        const data = { name, abbreviation, capacity: Number(capacity), activityId };
+        
+        const resourcesInActivity = resources.filter(r => r.activityId === activityId);
+        const highestOrder = resourcesInActivity.reduce((max, res) => Math.max(max, res.order || 0), 0);
+
+        const data = { 
+            name, 
+            abbreviation, 
+            capacity: Number(capacity), 
+            activityId,
+            order: editingId ? resources.find(r=>r.id === editingId).order : highestOrder + 1
+        };
 
         if (editingId) {
             await setDoc(doc(collectionRef, editingId), data);
