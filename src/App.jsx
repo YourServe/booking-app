@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { 
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
@@ -1900,11 +1901,11 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
     );
 }
 
-// --- Promo Manager Component (NEW) ---
+// --- Promo Manager Component (Updated) ---
 function PromoManager({ db, appId, promoCodes, activities, addOns }) {
-    const [giftUpApiKey, setGiftUpApiKey] = useState('');
-    const [isSavingKey, setIsSavingKey] = useState(false);
-    const [keySaveMessage, setKeySaveMessage] = useState('');
+    const [giftCardCode, setGiftCardCode] = useState('');
+    const [isChecking, setIsChecking] = useState(false);
+    const [checkResult, setCheckResult] = useState(null);
 
     const [editingId, setEditingId] = useState(null);
     const [code, setCode] = useState('');
@@ -1915,20 +1916,21 @@ function PromoManager({ db, appId, promoCodes, activities, addOns }) {
     const [applicableActivities, setApplicableActivities] = useState([]);
     const [applicableAddOns, setApplicableAddOns] = useState([]);
 
-    const handleSaveGiftUpKey = async () => {
-        setIsSavingKey(true);
-        setKeySaveMessage('');
-        // --- SECURE HANDLING SIMULATION ---
-        // In a real application, this function would make a secure call to your backend (e.g., a Cloud Function).
-        // The backend would then store the API key securely (e.g., in Google Secret Manager or as an environment variable).
-        // It should NEVER be stored in the public Firestore database as done with other settings here.
-        console.log(`SIMULATING: Securely saving GiftUp API Key "${giftUpApiKey}" to a backend service.`);
-        
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network latency
-        
-        setIsSavingKey(false);
-        setKeySaveMessage('API Key was sent to be saved securely.');
-        setTimeout(() => setKeySaveMessage(''), 3000);
+    const checkGiftCardBalance = async () => {
+        if (!giftCardCode) return;
+        setIsChecking(true);
+        setCheckResult(null);
+        try {
+            const functions = getFunctions();
+            const checkGiftCard = httpsCallable(functions, 'checkGiftCard');
+            const { data } = await checkGiftCard({ code: giftCardCode });
+            setCheckResult({ success: true, ...data });
+        } catch (error) {
+            console.error("Error checking gift card:", error);
+            setCheckResult({ success: false, message: error.message });
+        } finally {
+            setIsChecking(false);
+        }
     };
 
     const resetForm = () => {
@@ -1988,30 +1990,31 @@ function PromoManager({ db, appId, promoCodes, activities, addOns }) {
 
     return (
         <div className="space-y-12">
-            {/* GiftUp API Section */}
+            {/* GiftUp Integration Section */}
             <div>
-                 <h3 className="text-xl font-semibold mb-4 text-white">GiftUp Integration</h3>
+                 <h3 className="text-xl font-semibold mb-4 text-white">Gift Card Balance Checker</h3>
                  <div className="bg-gray-800 p-4 rounded-lg space-y-4 border border-gray-700">
-                     <div className="flex items-start p-3 rounded-lg bg-yellow-900/50 border border-yellow-700 text-yellow-300">
-                         <AlertTriangle size={24} className="mr-3 flex-shrink-0" />
-                         <div>
-                            <h4 className="font-bold">Security Warning</h4>
-                            <p className="text-sm">API keys are sensitive and should be handled with extreme care. This input will simulate sending the key to a secure backend. In a production environment, never store API keys directly in your database or front-end code.</p>
-                         </div>
-                     </div>
-                     <InputField 
-                        label="GiftUp API Key"
-                        value={giftUpApiKey}
-                        onChange={(e) => setGiftUpApiKey(e.target.value)}
-                        placeholder="Enter your GiftUp API key here"
-                        Icon={KeyRound}
-                     />
-                     <div className="flex items-center gap-4">
-                        <button onClick={handleSaveGiftUpKey} disabled={isSavingKey || !giftUpApiKey} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-500">
-                            {isSavingKey ? 'Saving...' : 'Save Key Securely'}
+                    <p className="text-sm text-gray-400">Use this tool to check the balance of a GiftUp.app gift card by calling your secure Cloud Function.</p>
+                     <div className="flex items-end gap-2">
+                        <InputField 
+                            label="Enter Gift Card Code"
+                            value={giftCardCode}
+                            onChange={(e) => setGiftCardCode(e.target.value)}
+                            placeholder="e.g., ABCD-1234"
+                            Icon={Gift}
+                        />
+                        <button onClick={checkGiftCardBalance} disabled={isChecking || !giftCardCode} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg disabled:bg-gray-500 h-fit">
+                            {isChecking ? 'Checking...' : 'Check'}
                         </button>
-                        {keySaveMessage && <p className="text-sm text-green-400">{keySaveMessage}</p>}
                      </div>
+                     {checkResult && (
+                        <div className={`p-3 rounded-lg text-sm ${checkResult.success ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
+                            {checkResult.success ? 
+                                `Valid Card. Balance: $${checkResult.currentValue.toFixed(2)}` :
+                                `Error: ${checkResult.message}`
+                            }
+                        </div>
+                     )}
                  </div>
             </div>
 
@@ -2101,6 +2104,7 @@ function PromoManager({ db, appId, promoCodes, activities, addOns }) {
         </div>
     );
 }
+
 
 // --- Activity Manager Component (Updated for Deposits) ---
 function ActivityManager({ db, appId, activities, areas }) {
