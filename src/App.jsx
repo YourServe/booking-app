@@ -115,6 +115,7 @@ export default function App() {
     const [closures, setClosures] = useState([]);
     const [blocks, setBlocks] = useState([]);
     const [promoCodes, setPromoCodes] = useState([]);
+    const [emailSettings, setEmailSettings] = useState(null);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -180,10 +181,11 @@ export default function App() {
         setLoading(true);
         const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures', 'blocks', 'promoCodes'];
         let loadedCount = 0;
+        let unsubscribers = [];
 
-        const unsubscribers = collections.map(collectionName => {
+        collections.forEach(collectionName => {
             const q = query(collection(db, `artifacts/${appId}/public/data/${collectionName}`));
-            return onSnapshot(q, (querySnapshot) => {
+            const unsub = onSnapshot(q, (querySnapshot) => {
                 const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 switch (collectionName) {
                     case 'activities': 
@@ -242,16 +244,36 @@ export default function App() {
                         break;
                     default: break;
                 }
-                loadedCount++;
-                if (loadedCount === collections.length) {
-                    setLoading(false);
-                }
             }, (err) => {
                 setError(`Failed to load ${collectionName}. Check permissions and path.`);
-                setLoading(false);
             });
+            unsubscribers.push(unsub);
         });
         
+        // Subscription for single email settings document
+        const emailSettingsDocRef = doc(db, `artifacts/${appId}/public/data/settings/emails`);
+        const emailUnsub = onSnapshot(emailSettingsDocRef, (doc) => {
+            if (doc.exists()) {
+                setEmailSettings(doc.data());
+            } else {
+                 // If settings don't exist, you might want to set a default state
+                 setEmailSettings({
+                    customerConfirmation: { enabled: false, subject: '', body: '' },
+                    customerReminder: { enabled: false, subject: '', body: '', hoursBefore: 24 },
+                    customerFollowUp: { enabled: false, subject: '', body: '' },
+                    staffConfirmation: { enabled: false, email: '' }
+                 });
+            }
+        }, (err) => {
+            setError(`Failed to load email settings. Check permissions and path.`);
+        });
+        unsubscribers.push(emailUnsub);
+
+        // Check when all initial data is loaded
+        Promise.all(collections.map(c => getDocs(query(collection(db, `artifacts/${appId}/public/data/${c}`)))))
+            .then(() => setLoading(false))
+            .catch(() => setLoading(false)); // Also stop loading on error
+
         return () => unsubscribers.forEach(unsub => unsub());
     }, [isAuthReady, db, appId]);
 
@@ -535,6 +557,7 @@ export default function App() {
                                 areas={areas}
                                 closures={closures}
                                 promoCodes={promoCodes}
+                                emailSettings={emailSettings}
                             />
                         )}
                     </>
@@ -1844,7 +1867,7 @@ function ResourceOrderPopup({ resource, resources, activity, onClose, db, appId 
 
 
 // --- Settings View Component (Updated Layout) ---
-function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures, promoCodes }) {
+function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures, promoCodes, emailSettings }) {
     const [currentTab, setCurrentTab] = useState('activities');
 
     const tabs = [
@@ -1855,6 +1878,7 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
         { id: 'linking', label: 'Linking', icon: Link2 },
         { id: 'schedule', label: 'Schedule', icon: Clock },
         { id: 'closures', label: 'Closures', icon: Ban },
+        { id: 'emails', label: 'Emails', icon: Mail },
     ];
 
     return (
@@ -1862,7 +1886,7 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
             <div className="max-w-7xl mx-auto">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-white">Settings</h1>
-                    <p className="text-gray-400 mt-1">Manage activities, resources, and schedules for your venue.</p>
+                    <p className="text-gray-400 mt-1">Manage activities, resources, schedules, and communications for your venue.</p>
                 </div>
 
                  {/* Navigation Buttons */}
@@ -1893,12 +1917,175 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                         {currentTab === 'linking' && <ResourceLinkManager db={db} appId={appId} resources={resources} activities={activities} resourceLinks={resourceLinks} />}
                         {currentTab === 'schedule' && <AreaManager db={db} appId={appId} areas={areas} />}
                         {currentTab === 'closures' && <ClosureManager db={db} appId={appId} closures={closures} />}
+                        {currentTab === 'emails' && <EmailSettings db={db} appId={appId} initialSettings={emailSettings} />}
                     </div>
                 </main>
             </div>
         </div>
     );
 }
+
+// --- Email Settings Component (NEW) ---
+function EmailSettings({ db, appId, initialSettings }) {
+    const [settings, setSettings] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveMessage, setSaveMessage] = useState('');
+
+    const defaultSettings = {
+        customerConfirmation: { enabled: false, subject: 'Your Booking is Confirmed!', body: 'Hi {{customerName}},\n\nYour booking for {{activityName}} on {{bookingDate}} at {{bookingTime}} is confirmed.\n\nWe look forward to seeing you!' },
+        customerReminder: { enabled: false, subject: 'Reminder: Your Booking is Tomorrow', body: 'Hi {{customerName}},\n\nThis is a reminder for your booking for {{activityName}} tomorrow, {{bookingDate}} at {{bookingTime}}.\n\nSee you soon!', hoursBefore: 24 },
+        customerFollowUp: { enabled: false, subject: 'Thanks for Visiting!', body: 'Hi {{customerName}},\n\nThanks for visiting us! We hope you had a great time. We would love it if you could leave us a review.\n\nThanks!' },
+        staffConfirmation: { enabled: false, email: '' }
+    };
+
+    useEffect(() => {
+        setSettings(initialSettings || defaultSettings);
+    }, [initialSettings]);
+
+    const handleToggle = (key) => {
+        setSettings(prev => ({
+            ...prev,
+            [key]: { ...prev[key], enabled: !prev[key].enabled }
+        }));
+    };
+
+    const handleChange = (section, field, value) => {
+        setSettings(prev => ({
+            ...prev,
+            [section]: { ...prev[section], [field]: value }
+        }));
+    };
+    
+    const handleSave = async () => {
+        setIsSaving(true);
+        setSaveMessage('');
+        try {
+            const settingsRef = doc(db, `artifacts/${appId}/public/data/settings`, 'emails');
+            await setDoc(settingsRef, settings);
+            setSaveMessage('Settings saved successfully!');
+        } catch (error) {
+            console.error("Error saving email settings:", error);
+            setSaveMessage('Failed to save settings.');
+        } finally {
+            setIsSaving(false);
+            setTimeout(() => setSaveMessage(''), 3000);
+        }
+    };
+
+    if (!settings) {
+        return <div>Loading email settings...</div>;
+    }
+
+    const EmailEditor = ({ title, configKey, config }) => (
+        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 space-y-4">
+            <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-white">{title}</h3>
+                <Switch checked={config.enabled} onChange={() => handleToggle(configKey)} />
+            </div>
+            {config.enabled && (
+                <div className="space-y-4 pt-4 border-t border-gray-700">
+                    {configKey === 'customerReminder' && (
+                         <div className="flex items-center gap-2">
+                             <label className="text-sm font-medium text-gray-400">Send</label>
+                             <input 
+                                 type="number" 
+                                 value={config.hoursBefore}
+                                 onChange={(e) => handleChange(configKey, 'hoursBefore', Number(e.target.value))}
+                                 className="w-20 bg-gray-700 border border-gray-600 rounded-lg p-2 text-white"
+                             />
+                             <label className="text-sm font-medium text-gray-400">hours before booking</label>
+                         </div>
+                    )}
+                    <InputField 
+                        label="Email Subject" 
+                        value={config.subject}
+                        onChange={(e) => handleChange(configKey, 'subject', e.target.value)}
+                        placeholder="Enter email subject"
+                    />
+                    <div>
+                        <label className="text-sm font-medium text-gray-400 mb-1 block">Email Body</label>
+                        <textarea
+                            value={config.body}
+                            onChange={(e) => handleChange(configKey, 'body', e.target.value)}
+                            placeholder="Enter email content..."
+                            className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white h-40 resize-y"
+                        />
+                         <p className="text-xs text-gray-500 mt-1">
+                            Available placeholders: `{{customerName}}`, `{{bookingDate}}`, `{{bookingTime}}`, `{{activityName}}`, `{{groupSize}}`
+                        </p>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    return (
+        <div className="space-y-8">
+            <div>
+                <h2 className="text-2xl font-bold text-white">Customer Emails</h2>
+                <p className="text-gray-400 mt-1">Configure automated emails sent to your customers.</p>
+            </div>
+            <div className="space-y-6">
+                <EmailEditor title="Booking Confirmation" configKey="customerConfirmation" config={settings.customerConfirmation} />
+                <EmailEditor title="Booking Reminder" configKey="customerReminder" config={settings.customerReminder} />
+                <EmailEditor title="Post-Booking Follow-Up" configKey="customerFollowUp" config={settings.customerFollowUp} />
+            </div>
+            
+            <div className="pt-8 border-t border-gray-700">
+                 <h2 className="text-2xl font-bold text-white">Staff Notifications</h2>
+                 <p className="text-gray-400 mt-1">Send booking confirmations to internal staff members.</p>
+            </div>
+             <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 space-y-4">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold text-white">Staff Booking Confirmation</h3>
+                    <Switch checked={settings.staffConfirmation.enabled} onChange={() => handleToggle('staffConfirmation')} />
+                </div>
+                {settings.staffConfirmation.enabled && (
+                    <div className="pt-4 border-t border-gray-700">
+                        <InputField 
+                            label="Staff Email Address" 
+                            type="email"
+                            value={settings.staffConfirmation.email}
+                            onChange={(e) => handleChange('staffConfirmation', 'email', e.target.value)}
+                            placeholder="staff@example.com"
+                            Icon={Mail}
+                        />
+                    </div>
+                )}
+            </div>
+
+            <div className="flex justify-end items-center gap-4 pt-6">
+                {saveMessage && <p className="text-sm text-green-400">{saveMessage}</p>}
+                <button onClick={handleSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-500">
+                    {isSaving ? 'Saving...' : 'Save Email Settings'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// --- Switch Toggle Component (NEW) ---
+const Switch = ({ checked, onChange }) => {
+    return (
+        <button
+            type="button"
+            className={`${
+                checked ? 'bg-blue-600' : 'bg-gray-600'
+            } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800`}
+            role="switch"
+            aria-checked={checked}
+            onClick={onChange}
+        >
+            <span
+                aria-hidden="true"
+                className={`${
+                    checked ? 'translate-x-5' : 'translate-x-0'
+                } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+            />
+        </button>
+    );
+};
+
 
 // --- Promo Manager Component (Updated) ---
 function PromoManager({ db, appId, promoCodes, activities, addOns }) {
