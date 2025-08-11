@@ -9,17 +9,16 @@ import {
 import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu, RefreshCw, Send, KeyRound, Percent, CalendarDays } from 'lucide-react';
 
 // --- Firebase Configuration ---
-// This configuration is provided and should be used to initialize Firebase.
+// This configuration is now loaded securely from environment variables
 const firebaseConfig = {
-    apiKey: "AIzaSyA3NJOCZe2zFw6Ueu5gBt9o2UgFgvU8eI0",
-    authDomain: "serve-social-booking.firebaseapp.com",
-    projectId: "serve-social-booking",
-    storageBucket: "serve-social-booking.appspot.com",
-    messagingSenderId: "279115505018",
-    appId: "1:279115505018:web:204a8be5d1c11934628ac3",
-    measurementId: "G-F69VTE72T1"
+    apiKey: import.meta.env.VITE_API_KEY,
+    authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_APP_ID,
+    measurementId: import.meta.env.VITE_MEASUREMENT_ID
 };
-
 
 // --- Helper Functions & Constants ---
 const timeSlots = Array.from({ length: 15 * 4 + 1 }, (_, i) => {
