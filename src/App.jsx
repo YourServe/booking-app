@@ -5,7 +5,7 @@ import {
     getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, 
     onSnapshot, collection, query, where, getDocs, writeBatch, serverTimestamp, Timestamp 
 } from 'firebase/firestore';
-import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu, RefreshCw, Send } from 'lucide-react';
+import { Calendar, Settings, X, Plus, Trash2, MoreVertical, Check, User, Users, Clock, Tag, DollarSign, GripVertical, Search, Phone, Mail, PackagePlus, ChevronLeft, ChevronRight, CaseUpper, FileText, ShoppingCart, GlassWater, Pizza, Gift, Ticket, Link2, MapPin, AlertTriangle, Ban, Info, ChevronsUpDown, RotateCcw, Edit, List, SlidersHorizontal, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ZoomIn, ZoomOut, LayoutDashboard, TrendingUp, BarChart3, Menu, RefreshCw, Send, KeyRound, Percent, CalendarDays } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This configuration is provided and should be used to initialize Firebase.
@@ -114,6 +114,7 @@ export default function App() {
     const [scheduleOverrides, setScheduleOverrides] = useState([]);
     const [closures, setClosures] = useState([]);
     const [blocks, setBlocks] = useState([]);
+    const [promoCodes, setPromoCodes] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -177,7 +178,7 @@ export default function App() {
         if (!isAuthReady || !db) return;
 
         setLoading(true);
-        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures', 'blocks'];
+        const collections = ['activities', 'resources', 'bookings', 'customers', 'addOns', 'resourceLinks', 'areas', 'scheduleOverrides', 'closures', 'blocks', 'promoCodes'];
         let loadedCount = 0;
 
         const unsubscribers = collections.map(collectionName => {
@@ -230,6 +231,14 @@ export default function App() {
                             date: c.date instanceof Timestamp ? c.date.toDate() : new Date(c.date)
                         }));
                         setClosures(parsedClosures);
+                        break;
+                    case 'promoCodes':
+                        const parsedPromos = data.map(p => ({
+                            ...p,
+                            validFrom: p.validFrom instanceof Timestamp ? p.validFrom.toDate() : new Date(p.validFrom),
+                            validUntil: p.validUntil instanceof Timestamp ? p.validUntil.toDate() : new Date(p.validUntil),
+                        }));
+                        setPromoCodes(parsedPromos);
                         break;
                     default: break;
                 }
@@ -525,6 +534,7 @@ export default function App() {
                                 resourceLinks={resourceLinks}
                                 areas={areas}
                                 closures={closures}
+                                promoCodes={promoCodes}
                             />
                         )}
                     </>
@@ -1834,13 +1844,14 @@ function ResourceOrderPopup({ resource, resources, activity, onClose, db, appId 
 
 
 // --- Settings View Component (Updated Layout) ---
-function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures }) {
+function SettingsView({ db, appId, activities, resources, addOns, resourceLinks, areas, closures, promoCodes }) {
     const [currentTab, setCurrentTab] = useState('activities');
 
     const tabs = [
         { id: 'activities', label: 'Activities', icon: Tag },
         { id: 'resources', label: 'Resources', icon: GripVertical },
         { id: 'addOns', label: 'Add-Ons', icon: ShoppingCart },
+        { id: 'promos', label: 'Gift Cards & Promos', icon: Ticket },
         { id: 'linking', label: 'Linking', icon: Link2 },
         { id: 'schedule', label: 'Schedule', icon: Clock },
         { id: 'closures', label: 'Closures', icon: Ban },
@@ -1855,7 +1866,7 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                 </div>
 
                  {/* Navigation Buttons */}
-                <nav className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-start gap-2 mb-8">
+                <nav className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap md:justify-start gap-2 mb-8">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
@@ -1878,11 +1889,214 @@ function SettingsView({ db, appId, activities, resources, addOns, resourceLinks,
                         {currentTab === 'activities' && <ActivityManager db={db} appId={appId} activities={activities} areas={areas} />}
                         {currentTab === 'resources' && <ResourceManager db={db} appId={appId} resources={resources} activities={activities} />}
                         {currentTab === 'addOns' && <AddOnManager db={db} appId={appId} addOns={addOns} />}
+                        {currentTab === 'promos' && <PromoManager db={db} appId={appId} promoCodes={promoCodes} activities={activities} addOns={addOns} />}
                         {currentTab === 'linking' && <ResourceLinkManager db={db} appId={appId} resources={resources} activities={activities} resourceLinks={resourceLinks} />}
                         {currentTab === 'schedule' && <AreaManager db={db} appId={appId} areas={areas} />}
                         {currentTab === 'closures' && <ClosureManager db={db} appId={appId} closures={closures} />}
                     </div>
                 </main>
+            </div>
+        </div>
+    );
+}
+
+// --- Promo Manager Component (NEW) ---
+function PromoManager({ db, appId, promoCodes, activities, addOns }) {
+    const [giftUpApiKey, setGiftUpApiKey] = useState('');
+    const [isSavingKey, setIsSavingKey] = useState(false);
+    const [keySaveMessage, setKeySaveMessage] = useState('');
+
+    const [editingId, setEditingId] = useState(null);
+    const [code, setCode] = useState('');
+    const [discountType, setDiscountType] = useState('Percentage');
+    const [discountValue, setDiscountValue] = useState('');
+    const [validFrom, setValidFrom] = useState('');
+    const [validUntil, setValidUntil] = useState('');
+    const [applicableActivities, setApplicableActivities] = useState([]);
+    const [applicableAddOns, setApplicableAddOns] = useState([]);
+
+    const handleSaveGiftUpKey = async () => {
+        setIsSavingKey(true);
+        setKeySaveMessage('');
+        // --- SECURE HANDLING SIMULATION ---
+        // In a real application, this function would make a secure call to your backend (e.g., a Cloud Function).
+        // The backend would then store the API key securely (e.g., in Google Secret Manager or as an environment variable).
+        // It should NEVER be stored in the public Firestore database as done with other settings here.
+        console.log(`SIMULATING: Securely saving GiftUp API Key "${giftUpApiKey}" to a backend service.`);
+        
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network latency
+        
+        setIsSavingKey(false);
+        setKeySaveMessage('API Key was sent to be saved securely.');
+        setTimeout(() => setKeySaveMessage(''), 3000);
+    };
+
+    const resetForm = () => {
+        setEditingId(null);
+        setCode('');
+        setDiscountType('Percentage');
+        setDiscountValue('');
+        setValidFrom('');
+        setValidUntil('');
+        setApplicableActivities([]);
+        setApplicableAddOns([]);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!code || !discountValue || !validFrom || !validUntil) return;
+
+        const data = {
+            code: code.toUpperCase().trim(),
+            discountType,
+            discountValue: Number(discountValue),
+            validFrom: Timestamp.fromDate(new Date(validFrom)),
+            validUntil: Timestamp.fromDate(new Date(validUntil)),
+            applicableActivities,
+            applicableAddOns,
+            status: 'active'
+        };
+
+        const collectionRef = collection(db, `artifacts/${appId}/public/data/promoCodes`);
+        if (editingId) {
+            await updateDoc(doc(collectionRef, editingId), data);
+        } else {
+            await addDoc(collectionRef, data);
+        }
+        resetForm();
+    };
+    
+    const handleEdit = (promo) => {
+        setEditingId(promo.id);
+        setCode(promo.code);
+        setDiscountType(promo.discountType);
+        setDiscountValue(promo.discountValue);
+        setValidFrom(promo.validFrom.toISOString().split('T')[0]);
+        setValidUntil(promo.validUntil.toISOString().split('T')[0]);
+        setApplicableActivities(promo.applicableActivities || []);
+        setApplicableAddOns(promo.applicableAddOns || []);
+    };
+
+    const handleDelete = async (id) => {
+        await deleteDoc(doc(db, `artifacts/${appId}/public/data/promoCodes`, id));
+    };
+
+    const handleToggleApplicability = (type, id) => {
+        const stateSetter = type === 'activity' ? setApplicableActivities : setApplicableAddOns;
+        stateSetter(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
+    return (
+        <div className="space-y-12">
+            {/* GiftUp API Section */}
+            <div>
+                 <h3 className="text-xl font-semibold mb-4 text-white">GiftUp Integration</h3>
+                 <div className="bg-gray-800 p-4 rounded-lg space-y-4 border border-gray-700">
+                     <div className="flex items-start p-3 rounded-lg bg-yellow-900/50 border border-yellow-700 text-yellow-300">
+                         <AlertTriangle size={24} className="mr-3 flex-shrink-0" />
+                         <div>
+                            <h4 className="font-bold">Security Warning</h4>
+                            <p className="text-sm">API keys are sensitive and should be handled with extreme care. This input will simulate sending the key to a secure backend. In a production environment, never store API keys directly in your database or front-end code.</p>
+                         </div>
+                     </div>
+                     <InputField 
+                        label="GiftUp API Key"
+                        value={giftUpApiKey}
+                        onChange={(e) => setGiftUpApiKey(e.target.value)}
+                        placeholder="Enter your GiftUp API key here"
+                        Icon={KeyRound}
+                     />
+                     <div className="flex items-center gap-4">
+                        <button onClick={handleSaveGiftUpKey} disabled={isSavingKey || !giftUpApiKey} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-500">
+                            {isSavingKey ? 'Saving...' : 'Save Key Securely'}
+                        </button>
+                        {keySaveMessage && <p className="text-sm text-green-400">{keySaveMessage}</p>}
+                     </div>
+                 </div>
+            </div>
+
+            {/* Promo Code Section */}
+            <div className="grid md:grid-cols-2 gap-8">
+                <div>
+                    <h3 className="text-xl font-semibold mb-4">{editingId ? 'Edit Promo Code' : 'Add New Promo Code'}</h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputField label="Promo Code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g., SUMMER25" Icon={Ticket} required={true} />
+                            <div>
+                                <label className="text-sm font-medium text-gray-400 mb-1 block">Discount Type</label>
+                                <select value={discountType} onChange={(e) => setDiscountType(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 text-white">
+                                    <option value="Percentage">Percentage (%)</option>
+                                    <option value="Fixed">Fixed Amount ($)</option>
+                                </select>
+                            </div>
+                        </div>
+                         <InputField label="Discount Value" type="number" value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} placeholder={discountType === 'Percentage' ? '25' : '10'} Icon={discountType === 'Percentage' ? Percent : DollarSign} required={true}/>
+                         <div className="grid grid-cols-2 gap-4">
+                             <InputField label="Valid From" type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} Icon={CalendarDays} required />
+                             <InputField label="Valid Until" type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} Icon={CalendarDays} required />
+                         </div>
+
+                        <div>
+                            <h4 className="text-sm font-medium text-gray-400 mb-2">Applicable Items (leave blank for all)</h4>
+                            <div className="grid grid-cols-2 gap-4 max-h-48 overflow-y-auto p-2 bg-gray-900/50 rounded-lg border border-gray-700">
+                                <div>
+                                    <h5 className="font-semibold text-blue-400 mb-2">Activities</h5>
+                                    {activities.map(act => (
+                                        <InputField key={act.id} type="checkbox" label={act.name} checked={applicableActivities.includes(act.id)} onChange={() => handleToggleApplicability('activity', act.id)} />
+                                    ))}
+                                </div>
+                                <div>
+                                    <h5 className="font-semibold text-purple-400 mb-2">Add-Ons</h5>
+                                    {addOns.map(addOn => (
+                                        <InputField key={addOn.id} type="checkbox" label={addOn.name} checked={applicableAddOns.includes(addOn.id)} onChange={() => handleToggleApplicability('addOn', addOn.id)} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">{editingId ? 'Update' : 'Save'}</button>
+                            {editingId && <button type="button" onClick={resetForm} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full">Cancel</button>}
+                        </div>
+                    </form>
+                </div>
+                <div>
+                     <h3 className="text-xl font-semibold mb-4">Existing Promo Codes</h3>
+                    <ul className="space-y-2">
+                        {promoCodes.map(promo => (
+                            <li key={promo.id} className="bg-gray-800 p-3 rounded-lg">
+                               <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-bold text-lg text-white">{promo.code}</p>
+                                        <p className="text-blue-400 font-semibold">
+                                            {promo.discountType === 'Percentage' ? `${promo.discountValue}% Off` : `$${promo.discountValue} Off`}
+                                        </p>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Valid: {promo.validFrom.toLocaleDateString()} - {promo.validUntil.toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleEdit(promo)} className="p-2 hover:bg-gray-700 rounded-md"><Edit size={16} /></button>
+                                        <button onClick={() => handleDelete(promo.id)} className="p-2 hover:bg-gray-700 rounded-md"><Trash2 size={16} /></button>
+                                    </div>
+                               </div>
+                                {(promo.applicableActivities?.length > 0 || promo.applicableAddOns?.length > 0) &&
+                                    <div className="text-xs mt-2 pt-2 border-t border-gray-700">
+                                        <p className="font-semibold text-gray-300">Applies to:</p>
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                            {promo.applicableActivities?.map(id => (
+                                                <span key={id} className="bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded">{activities.find(a=>a.id===id)?.name}</span>
+                                            ))}
+                                            {promo.applicableAddOns?.map(id => (
+                                                <span key={id} className="bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">{addOns.find(a=>a.id===id)?.name}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                }
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
         </div>
     );
